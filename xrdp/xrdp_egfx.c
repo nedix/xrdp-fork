@@ -1072,7 +1072,7 @@ xrdp_egfx_create(struct xrdp_mm *mm, struct xrdp_egfx **egfx)
     LOG(LOG_LEVEL_INFO, "xrdp_egfx_create: error %d channel_id %d",
         error, self->channel_id);
     self->session = process->session;
-    self->surface_id = 0;
+    self->surface_id = 1;
     *egfx = self;
     return 0;
 }
