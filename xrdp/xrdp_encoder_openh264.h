@@ -21,13 +21,12 @@
 #ifndef _XRDP_ENCODER_OPENH264_H
 #define _XRDP_ENCODER_OPENH264_H
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <wels/codec_api.h>
+#include <wels/codec_def.h>
 
-#ifdef WITH_OPENH264
+//#ifdef WITH_OPENH264
 
-typedef struct {
+typedef struct openh264_context {
 	ISVCEncoder *pEncoder;
 	SSourcePicture pic1;
 	SSourcePicture pic2;
@@ -41,13 +40,20 @@ typedef struct {
 	uint32_t nullValue;
 } openh264_context;
 
-int ogon_openh264_library_open(void);
-void ogon_openh264_library_close(void);
-int ogon_openh264_compress(openh264_context *h264, uint32_t newFrameRate,
-                            uint32_t targetFrameSizeInBits, uint8_t *data, uint8_t **ppDstData,
-                            uint32_t *pDstSize, ogon_openh264_compress_mode avcMode, int *pOptimizable);
-void ogon_openh264_context_free(openh264_context *h264);
-struct openh264_context *ogon_openh264_context_new(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
+int
+ogon_openh264_library_open(void);
+void
+ogon_openh264_library_close(void);
+void *
+xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
+int
+xrdp_encoder_openh264_encode(void *handle, int session,
+                        	 int width, int height, int format, const char *data,
+                         	 char *cdata, int *cdata_bytes);
+int
+xrdp_encoder_openh264_delete(void *handle);
+struct openh264_context *
+ogon_openh264_context_new(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
 
-#endif /* WITH_OPENH264 defined   */
+//#endif /* WITH_OPENH264 defined   */
 #endif /* _XRDP_ENCODER_OPENH264_H */

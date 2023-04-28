@@ -26,8 +26,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
-#include <wels/codec_api.h>
-#include <wels/codec_def.h>
 
 #include "xrdp.h"
 #include "arch.h"
@@ -46,16 +44,11 @@ pfn_create_openh264_encoder create_openh264_encoder = NULL;
 pfn_destroy_openh264_encoder destroy_open_h264_encoder = NULL;
 pfn_get_openh264_version get_openh264_version = NULL;
 
-static void *openh264lib = NULL;
-static int h264_init_success = 0;
+char* OPENH264_LIBRARY = "libogon-openh264.so";
 
-// int ogon_openh264_compress(openh264_context *h264, uint32_t newFrameRate,
-// 	uint32_t targetFrameSizeInBits, uint8_t *data, uint8_t **ppDstData,
-// 	uint32_t *pDstSize, int *pOptimizable)
-// {
 int
 xrdp_encoder_openh264_encode(void *handle, int session,
-                        	 int width, int height, int format, const char *data,
+                        	 int enc_width, int enc_height, int format, const char *data,
                          	 char *cdata, int *cdata_bytes)
 {
 	SFrameBSInfo info;
@@ -65,12 +58,13 @@ xrdp_encoder_openh264_encode(void *handle, int session,
     ISVCEncoder *encoder;
     int32_t width, height;
 	int i, j, status;
-	struct openh264_context *h264;
-	h264 = (struct openh264_context *) handle;
 
-	if (!h264 || !h264_init_success) {
+	if (!handle || !h264_init_success) {
 		return 0;
 	}
+
+	struct openh264_context *h264;
+	h264 = (struct openh264_context *) handle;
 
 	width = (int32_t)h264->scrWidth;
 	height = (int32_t)h264->scrHeight;
@@ -79,7 +73,6 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		LOG(LOG_LEVEL_ERROR, "yuv conversion failed");
 		return 0;
 	}
-
 
 	h264->frameRate = 24;
 
@@ -108,7 +101,7 @@ xrdp_encoder_openh264_encode(void *handle, int session,
         {
             return -3;
         }
-
+	}
 
 
 	memcpy(pic_in.img.plane[0], data, full_size);
@@ -153,16 +146,16 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		h264->nullCount++;
 	}
 
-	if (pOptimizable) {
-		*pOptimizable = (h264->nullCount >= 10) ? 0 : 1;
-	}
-
 	return 1;
 }
 
-void ogon_openh264_context_free(struct openh264_context *h264) {
+
+int
+xrdp_encoder_openh264_delete(void *handle)
+{
+	struct openh264_context *h264 = (struct openh264_context *)handle;
 	if (!h264) {
-		return;
+		return 0;
 	}
 
 	if (h264->pEncoder) {
@@ -179,7 +172,7 @@ void ogon_openh264_context_free(struct openh264_context *h264) {
 
 	free(h264);
 
-	return;
+	return 0;
 }
 
 /*****************************************************************************/
@@ -206,7 +199,7 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 		LOG(LOG_LEVEL_WARNING, "WARNING: screen width %"PRIu32" is not a multiple of 16. Expect degraded H.264 performance!", scrWidth);
 	}
 
-	if (!(h264 = (openh264_context *)calloc(1, sizeof(openh264_context)))) {
+	if (!(h264 = (struct openh264_context *)calloc(1, sizeof(openh264_context)))) {
 		LOG(LOG_LEVEL_ERROR, "Failed to allocate OpenH264 context");
 		return NULL;
 	}
@@ -272,7 +265,7 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 		goto err;
 	}
 
-	ZeroMemory(&encParamExt, sizeof(encParamExt));
+	g_memset(&encParamExt, 0, sizeof(encParamExt));
 	if ((*h264->pEncoder)->GetDefaultParams(h264->pEncoder, &encParamExt)) {
 		LOG(LOG_LEVEL_ERROR, "Failed to retrieve H.264 default ext params");
 		goto err;
@@ -376,7 +369,7 @@ int xrdp_encoder_openh264_open(void)
 	}
 
 	if (!openh264lib) {
-		if (!(openh264lib = dlopen(OGON_OPENH264_LIBRARY, RTLD_NOW))) {
+		if (!(openh264lib = (void *)g_load_library(OPENH264_LIBRARY))) {
 			LOG(LOG_LEVEL_WARNING, "Failed to load OpenH264 library: %s", dlerror());
 			goto fail;
 		}
@@ -397,7 +390,7 @@ int xrdp_encoder_openh264_open(void)
 		goto fail;
 	}
 
-	ZeroMemory(&cver, sizeof(cver));
+	g_memset(&cver, 0, sizeof(cver));
 
 	get_openh264_version(&cver);
 
