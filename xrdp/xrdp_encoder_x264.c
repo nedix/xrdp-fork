@@ -133,8 +133,10 @@ xrdp_encoder_x264_encode(void *handle, int session,
             xe->x264_params.i_threads = 1;
             xe->x264_params.i_fps_num = 60;
             xe->x264_params.i_fps_den = 1;
-            //xe->x264_params.b_sliced_threads = 0;
-            xe->x264_params.b_repeat_headers = 1;
+            xe->x264_params.i_slice_max_size = 0;
+            xe->x264_params.b_vfr_input = 0;
+            xe->x264_params.b_sliced_threads = 0;
+            //xe->x264_params.b_repeat_headers = 1;
             //xe->x264_params.i_bframe = 2;
             //xe->x264_params.i_keyint_max = 2;
             //xe->x264_params.b_cabac = 1;
@@ -144,11 +146,11 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.b_annexb = 1;
             //xe->x264_params.i_bframe_pyramid = 1;
             //xe->x264_params.i_bframe_adaptive = 1;
-            xe->x264_params.b_interlaced = 1;
+            //xe->x264_params.b_interlaced = 1;
             xe->x264_params.rc.i_rc_method = X264_RC_CQP;
             xe->x264_params.rc.i_qp_constant = 23;
-            xe->x264_params.i_frame_packing = 1;
-            xe->x264_params.i_bframe_adaptive = 1;
+            //xe->x264_params.i_frame_packing = 1;
+            //xe->x264_params.i_bframe_adaptive = 1;
             //xe->x264_params.b_pic_struct = 1;
             //xe->x264_params.b_stitchable = 0;
             //xe->x264_params.b_fake_interlaced = 1;

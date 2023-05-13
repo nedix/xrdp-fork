@@ -30,21 +30,20 @@
 #include "xrdp.h"
 #include "arch.h"
 #include "os_calls.h"
-#include <dlfcn.h>
 #include "xrdp_encoder_openh264.h"
 
-static void *openh264lib = NULL;
+//static void *openh264lib = NULL;
 static int h264_init_success = 0;
 
-typedef int (*pfn_create_openh264_encoder)(ISVCEncoder **ppEncoder);
-typedef void (*pfn_destroy_openh264_encoder)(ISVCEncoder *pEncoder);
-typedef void (*pfn_get_openh264_version)(OpenH264Version *pVersion);
+// typedef int (*pfn_create_openh264_encoder)(ISVCEncoder **ppEncoder);
+// typedef void (*pfn_destroy_openh264_encoder)(ISVCEncoder *pEncoder);
+// typedef void (*pfn_get_openh264_version)(OpenH264Version *pVersion);
 
-pfn_create_openh264_encoder create_openh264_encoder = NULL;
-pfn_destroy_openh264_encoder destroy_open_h264_encoder = NULL;
-pfn_get_openh264_version get_openh264_version = NULL;
+// pfn_create_openh264_encoder create_openh264_encoder = NULL;
+// pfn_destroy_openh264_encoder destroy_open_h264_encoder = NULL;
+// pfn_get_openh264_version get_openh264_version = NULL;
 
-char* OPENH264_LIBRARY = "libogon-openh264.so";
+//char* OPENH264_LIBRARY = "libopenh264.so";
 
 int
 xrdp_encoder_openh264_encode(void *handle, int session,
@@ -54,8 +53,8 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 	SFrameBSInfo info;
 	SSourcePicture *sourcePicture = NULL;
     SSourcePicture pic_in;
-    SFrameBSInfo frame_out;
-    ISVCEncoder *encoder;
+    //SFrameBSInfo frame_out;
+    //ISVCEncoder *encoder;
     int32_t width, height;
 	int i, j, status;
 
@@ -78,35 +77,16 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 
 	memset(&info, 0, sizeof(SFrameBSInfo));
 
-	if ((data != NULL) && (encoder != NULL))
-    {
-        pic_in.iColorFormat = EVideoFormatType::videoFormatI420;
-        pic_in.iStride[0] = width;
-        pic_in.iStride[1] = pic_in.iStride[2] = width >> 1;
-        pic_in.pData[0] = (unsigned char *)data;
-        pic_in.pData[1] = pic_in.pData[0] + width * height;
-        pic_in.pData[2] = pic_in.pData[1] + width * height / 4;
+	pic_in.iColorFormat = videoFormatI420;
+	pic_in.iStride[0] = width;
+	pic_in.iStride[1] = pic_in.iStride[2] = width >> 1;
+	pic_in.pData[0] = (unsigned char *)data;
+	pic_in.pData[1] = pic_in.pData[0] + width * height;
+	pic_in.pData[2] = pic_in.pData[1] + width * height / 4;
 
-        // prepare output buffer
-        SFrameBSInfo bsInfo = { 0 };
-        bsInfo.iBufferStatus = 0;
-        bsInfo.iPayloadSize = *cdata_bytes;
-        bsInfo.pBsBuf = (uint8_t *)cdata;
-
-        // encode picture
-        if (encoder->EncodeFrame(&srcPic, &bsInfo) != 0 ||
-            bsInfo.iBufferStatus != 1 ||
-            bsInfo.iLayerNum != 1 ||
-            bsInfo.iNalCount < 1)
-        {
-            return -3;
-        }
-	}
-
-
-	memcpy(pic_in.img.plane[0], data, full_size);
-    memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
-    memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
+	// memcpy(pic_in.img.plane[0], data, full_size);
+    // memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
+    // memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
 
 	sourcePicture = &h264->pic1;
 
@@ -122,29 +102,15 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		return 0;
 	}
 
-	*ppDstData = info.sLayerInfo[0].pBsBuf;
-	*pDstSize = 0;
+	*cdata_bytes = 0;
 
 	for (i = 0; i < info.iLayerNum; i++) {
 		for (j = 0; j < info.sLayerInfo[i].iNalCount; j++) {
-			*pDstSize += info.sLayerInfo[i].pNalLengthInByte[j];
+			*cdata_bytes += info.sLayerInfo[i].pNalLengthInByte[j];
 		}
 	}
-	/* WLog_DBG(TAG, "ENCODED SIZE (mode=%"PRIu32"): %"PRIu32" byte (%"PRIu32" bits)", avcMode, *pDstSize, (*pDstSize) * 8); */
 
-	/**
-	 * TODO:
-	 * Maybe there is a better way to detect if encoding the same
-	 * buffer again will actually improve quality.
-	 * For now we consider 10 encodings with size <= h264->nullValue in a row
-	 * as final.
-	 */
-
-	if (*pDstSize > h264->nullValue) {
-		h264->nullCount = 0;
-	} else {
-		h264->nullCount++;
-	}
+	g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
 
 	return 1;
 }
@@ -159,7 +125,7 @@ xrdp_encoder_openh264_delete(void *handle)
 	}
 
 	if (h264->pEncoder) {
-		destroy_open_h264_encoder(h264->pEncoder);
+		WelsDestroySVCEncoder(h264->pEncoder);
 	}
 
 	g_free(h264->pic1.pData[0]);
@@ -171,6 +137,7 @@ xrdp_encoder_openh264_delete(void *handle)
 	g_free(h264->pic2.pData[2]);
 
 	free(h264);
+	h264 = NULL;
 
 	return 0;
 }
@@ -260,7 +227,8 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 	memset(h264->pic2.pData[1], 0, usize);
 	memset(h264->pic2.pData[2], 0, vsize);
 
-	if ((create_openh264_encoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
+	//if ((create_openh264_encoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
+	if ((WelsCreateSVCEncoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
 		LOG(LOG_LEVEL_ERROR, "Failed to create H.264 encoder");
 		goto err;
 	}
@@ -328,7 +296,7 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 err:
 	if (h264) {
 		if (h264->pEncoder) {
-			destroy_open_h264_encoder(h264->pEncoder);
+			WelsDestroySVCEncoder(h264->pEncoder);
 		}
 		g_free(h264->pic1.pData[0]);
 		g_free(h264->pic1.pData[1]);
@@ -342,80 +310,80 @@ err:
 	return NULL;
 }
 
-void ogon_openh264_library_close(void) {
-	if (openh264lib) {
-		dlclose(openh264lib);
-		openh264lib = NULL;
-	}
-}
+// void ogon_openh264_library_close(void) {
+// 	if (openh264lib) {
+// 		dlclose(openh264lib);
+// 		openh264lib = NULL;
+// 	}
+// }
 
-int xrdp_encoder_openh264_open(void) 
-{
-	char* libh264;
-	OpenH264Version cver;
+// int xrdp_encoder_openh264_open(void) 
+// {
+// 	char* libh264;
+// 	OpenH264Version cver;
 
-	if (h264_init_success) {
-		LOG(LOG_LEVEL_WARNING, "OpenH264 was already successfully initialized");
-		return 1;
-	}
+// 	if (h264_init_success) {
+// 		LOG(LOG_LEVEL_WARNING, "OpenH264 was already successfully initialized");
+// 		return 1;
+// 	}
 
-	libh264 = getenv("LIBOPENH264");
-	if (libh264) {
-        LOG(LOG_LEVEL_DEBUG, "Loading OpenH264 library specified in environment: %s", libh264);
-		if (!(openh264lib = dlopen(libh264, RTLD_NOW))) {
-			LOG(LOG_LEVEL_ERROR, "Failed to load OpenH264 library: %s", dlerror());
-			/* don't fail yet, we'll try to load the default library below ! */
-		}
-	}
+// 	libh264 = getenv("LIBOPENH264");
+// 	if (libh264) {
+//         LOG(LOG_LEVEL_DEBUG, "Loading OpenH264 library specified in environment: %s", libh264);
+// 		if (!(openh264lib = dlopen(libh264, RTLD_NOW))) {
+// 			LOG(LOG_LEVEL_ERROR, "Failed to load OpenH264 library: %s", dlerror());
+// 			/* don't fail yet, we'll try to load the default library below ! */
+// 		}
+// 	}
 
-	if (!openh264lib) {
-		if (!(openh264lib = (void *)g_load_library(OPENH264_LIBRARY))) {
-			LOG(LOG_LEVEL_WARNING, "Failed to load OpenH264 library: %s", dlerror());
-			goto fail;
-		}
-	}
+// 	if (!openh264lib) {
+// 		if (!(openh264lib = (void *)g_load_library(OPENH264_LIBRARY))) {
+// 			LOG(LOG_LEVEL_WARNING, "Failed to load OpenH264 library: %s", dlerror());
+// 			goto fail;
+// 		}
+// 	}
 
-	if (!(create_openh264_encoder = (pfn_create_openh264_encoder)dlsym(openh264lib, "WelsCreateSVCEncoder"))) {
-		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 encoder creation function: %s", dlerror());
-		goto fail;
-	}
+// 	if (!(create_openh264_encoder = (pfn_create_openh264_encoder)dlsym(openh264lib, "WelsCreateSVCEncoder"))) {
+// 		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 encoder creation function: %s", dlerror());
+// 		goto fail;
+// 	}
 
-	if (!(destroy_open_h264_encoder = (pfn_destroy_openh264_encoder)dlsym(openh264lib, "WelsDestroySVCEncoder"))) {
-		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 encoder destroy function: %s", dlerror());
-		goto fail;
-	}
+// 	if (!(destroy_open_h264_encoder = (pfn_destroy_openh264_encoder)dlsym(openh264lib, "WelsDestroySVCEncoder"))) {
+// 		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 encoder destroy function: %s", dlerror());
+// 		goto fail;
+// 	}
 
-	if (!(get_openh264_version = (pfn_get_openh264_version)dlsym(openh264lib, "WelsGetCodecVersionEx"))) {
-		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 version function: %s", dlerror());
-		goto fail;
-	}
+// 	if (!(get_openh264_version = (pfn_get_openh264_version)dlsym(openh264lib, "WelsGetCodecVersionEx"))) {
+// 		LOG(LOG_LEVEL_ERROR, "Failed to get OpenH264 version function: %s", dlerror());
+// 		goto fail;
+// 	}
 
-	g_memset(&cver, 0, sizeof(cver));
+// 	g_memset(&cver, 0, sizeof(cver));
 
-	get_openh264_version(&cver);
+// 	get_openh264_version(&cver);
 
-	LOG(LOG_LEVEL_DEBUG, "OpenH264 codec version: %u.%u.%u.%u",
-			cver.uMajor, cver.uMinor, cver.uRevision, cver.uReserved);
+// 	LOG(LOG_LEVEL_DEBUG, "OpenH264 codec version: %u.%u.%u.%u",
+// 			cver.uMajor, cver.uMinor, cver.uRevision, cver.uReserved);
 
-	// if (cver.uMajor != OPENH264_MAJOR || cver.uMinor != OPENH264_MINOR) {
-	// 	WLog_ERR(TAG, "The loaded OpenH264 library is incompatible with this build (%d.%d.%d.%d)",
-	// 		OPENH264_MAJOR, OPENH264_MINOR, OPENH264_REVISION, OPENH264_RESERVED);
-	// 	goto fail;
-	// }
+// 	// if (cver.uMajor != OPENH264_MAJOR || cver.uMinor != OPENH264_MINOR) {
+// 	// 	WLog_ERR(TAG, "The loaded OpenH264 library is incompatible with this build (%d.%d.%d.%d)",
+// 	// 		OPENH264_MAJOR, OPENH264_MINOR, OPENH264_REVISION, OPENH264_RESERVED);
+// 	// 	goto fail;
+// 	// }
 
-	LOG(LOG_LEVEL_DEBUG, "Successfully initialized OpenH264 library");
+// 	LOG(LOG_LEVEL_DEBUG, "Successfully initialized OpenH264 library");
 
-	h264_init_success = 1;
-	return 1;
+// 	h264_init_success = 1;
+// 	return 1;
 
-fail:
-	create_openh264_encoder = NULL;
-	destroy_open_h264_encoder = NULL;
-	get_openh264_version = NULL;
-	ogon_openh264_library_close();
-	h264_init_success = 0;
-	return 0;
-}
+// fail:
+// 	create_openh264_encoder = NULL;
+// 	destroy_open_h264_encoder = NULL;
+// 	get_openh264_version = NULL;
+// 	ogon_openh264_library_close();
+// 	h264_init_success = 0;
+// 	return 0;
+// }
 
 /*****************************************************************************/
 // void *
