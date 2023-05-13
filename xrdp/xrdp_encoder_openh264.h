@@ -45,15 +45,17 @@ ogon_openh264_library_open(void);
 void
 ogon_openh264_library_close(void);
 void *
-xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
+xrdp_encoder_openh264_create();
+void *
+xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidth, uint32_t scrHeight);
 int
 xrdp_encoder_openh264_encode(void *handle, int session,
                         	 int width, int height, int format, const char *data,
                          	 char *cdata, int *cdata_bytes);
 int
 xrdp_encoder_openh264_delete(void *handle);
-struct openh264_context *
-ogon_openh264_context_new(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
+// struct openh264_context *
+// ogon_openh264_context_new(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride);
 
 //#endif /* WITH_OPENH264 defined   */
 #endif /* _XRDP_ENCODER_OPENH264_H */

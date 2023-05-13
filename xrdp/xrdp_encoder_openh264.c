@@ -33,7 +33,6 @@
 #include "xrdp_encoder_openh264.h"
 
 //static void *openh264lib = NULL;
-static int h264_init_success = 0;
 
 // typedef int (*pfn_create_openh264_encoder)(ISVCEncoder **ppEncoder);
 // typedef void (*pfn_destroy_openh264_encoder)(ISVCEncoder *pEncoder);
@@ -52,43 +51,31 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 {
 	SFrameBSInfo info;
 	SSourcePicture *sourcePicture = NULL;
-    SSourcePicture pic_in;
-    //SFrameBSInfo frame_out;
-    //ISVCEncoder *encoder;
-    int32_t width, height;
 	int i, j, status;
 
-	if (!handle || !h264_init_success) {
+	LOG(LOG_LEVEL_INFO, "xrdp_encoder_openh264_encode:");
+
+	if (!handle) {
 		return 0;
 	}
 
 	struct openh264_context *h264;
 	h264 = (struct openh264_context *) handle;
 
-	width = (int32_t)h264->scrWidth;
-	height = (int32_t)h264->scrHeight;
-
-	if (status != 0) {
-		LOG(LOG_LEVEL_ERROR, "yuv conversion failed");
-		return 0;
+	if (h264->pEncoder == NULL) {
+		xrdp_encoder_openh264_open(h264, enc_width, enc_height);
 	}
+
+	sourcePicture = &h264->pic1;
 
 	h264->frameRate = 24;
 
-	memset(&info, 0, sizeof(SFrameBSInfo));
+	int full_size = enc_width * enc_height;
+    int quarter_size = full_size / 4;
 
-	pic_in.iColorFormat = videoFormatI420;
-	pic_in.iStride[0] = width;
-	pic_in.iStride[1] = pic_in.iStride[2] = width >> 1;
-	pic_in.pData[0] = (unsigned char *)data;
-	pic_in.pData[1] = pic_in.pData[0] + width * height;
-	pic_in.pData[2] = pic_in.pData[1] + width * height / 4;
-
-	// memcpy(pic_in.img.plane[0], data, full_size);
-    // memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
-    // memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
-
-	sourcePicture = &h264->pic1;
+	memcpy(sourcePicture->pData[0], data, full_size);
+	memcpy(sourcePicture->pData[1], data + full_size, quarter_size);
+	memcpy(sourcePicture->pData[2], data + full_size * 5 / 4, quarter_size);
 
 	status = (*h264->pEncoder)->EncodeFrame(h264->pEncoder, sourcePicture, &info);
 
@@ -112,7 +99,7 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 
 	g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
 
-	return 1;
+	return 0;
 }
 
 
@@ -143,19 +130,26 @@ xrdp_encoder_openh264_delete(void *handle)
 }
 
 /*****************************************************************************/
-void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32_t scrStride)
+void *xrdp_encoder_openh264_create()
 {
 	struct openh264_context *h264 = NULL;
+	LOG(LOG_LEVEL_INFO, "xrdp_encoder_openh264_create:");
+	h264 = (struct openh264_context *) g_malloc(sizeof(openh264_context), 1);
+	if (!h264) {
+		LOG(LOG_LEVEL_ERROR, "Failed to allocate OpenH264 context");
+	}
+	return h264;
+}
+
+/*****************************************************************************/
+void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidth, uint32_t scrHeight)
+{
+	LOG(LOG_LEVEL_INFO, "xrdp_encoder_openh264_open:");
 	uint32_t h264Width;
 	uint32_t h264Height;
 	SEncParamExt encParamExt;
 	SBitrateInfo bitrate;
 	size_t ysize, usize, vsize;
-
-	if (!h264_init_success) {
-		LOG(LOG_LEVEL_ERROR, "Cannot create OpenH264 context: library was not initialized");
-		return NULL;
-	}
 
 	if (scrWidth < 16 || scrHeight < 16) {
 		LOG(LOG_LEVEL_ERROR, "Error: Minimum height and width for OpenH264 is 16 but we got %"PRIu32" x %"PRIu32"", scrWidth, scrHeight);
@@ -166,8 +160,8 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 		LOG(LOG_LEVEL_WARNING, "WARNING: screen width %"PRIu32" is not a multiple of 16. Expect degraded H.264 performance!", scrWidth);
 	}
 
-	if (!(h264 = (struct openh264_context *)calloc(1, sizeof(openh264_context)))) {
-		LOG(LOG_LEVEL_ERROR, "Failed to allocate OpenH264 context");
+	if (!h264) {
+		LOG(LOG_LEVEL_ERROR, "OpenH264 context is not initialized.");
 		return NULL;
 	}
 
@@ -183,7 +177,7 @@ void *xrdp_encoder_openh264_create(uint32_t scrWidth, uint32_t scrHeight, uint32
 
 	h264->scrWidth = scrWidth;
 	h264->scrHeight = scrHeight;
-	h264->scrStride = scrStride;
+	h264->scrStride = scrWidth;
 
 	h264->pic1.iPicWidth = h264->pic2.iPicWidth = h264Width;
 	h264->pic1.iPicHeight = h264->pic2.iPicHeight = h264Height;

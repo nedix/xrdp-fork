@@ -51,15 +51,13 @@ struct x264_global
 void *
 xrdp_encoder_x264_create(void)
 {
-    struct x264_global *xg;
-
+    struct x264_global *x264 = NULL;
     LOG_DEVEL(LOG_LEVEL_TRACE, "xrdp_encoder_x264_create:");
-    xg = (struct x264_global *) g_malloc(sizeof(struct x264_global), 1);
-    if (xg == 0)
-    {
-        return 0;
+    x264 = (struct x264_global *) g_malloc(sizeof(struct x264_global), 1);
+    if (!x264) {
+        LOG(LOG_LEVEL_ERROR, "Failed to allocate X264 context");
     }
-    return xg;
+    return x264;
 }
 
 /*****************************************************************************/
@@ -214,9 +212,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.i_pic_struct = PIC_STRUCT_AUTO;
 
         //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
-
-
-
         // Copy input image to x264 picture structure
         //memcpy(pic_in.img.plane[0], data, full_size);
         //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
@@ -239,7 +234,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
         {
             return 4;
         }
-        LOG(LOG_LEVEL_INFO, "The number of nals is %d", num_nals);
         //int total_size = 0;
         for (int i = 0; i < num_nals; i++) {
             nals[i].i_ref_idc = 1;
