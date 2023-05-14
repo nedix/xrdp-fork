@@ -59,6 +59,8 @@ struct enc_rect
     short y2;
 };
 
+#define AVC444 1
+
 /*****************************************************************************/
 static int
 process_enc_jpg(struct xrdp_encoder *self, XRDP_ENC_DATA *enc);
@@ -109,10 +111,13 @@ xrdp_encoder_create(struct xrdp_mm *mm)
         self->in_codec_mode = 1;
         client_info->capture_code = 3;
         client_info->capture_format =
+#if AVC444
             /* XRDP_yuv444_709fr */
             (32 << 24) | (67 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+#else
             /* XRDP_nv12_709fr */
-            //(12 << 24) | (66 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+            (12 << 24) | (66 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+#endif
         self->process_enc = process_enc_h264;
         self->gfx = 1;
 #if defined(XRDP_X264)
@@ -176,10 +181,13 @@ xrdp_encoder_create(struct xrdp_mm *mm)
         self->in_codec_mode = 1;
         client_info->capture_code = 3;
         client_info->capture_format =
+#if AVC444
             /* XRDP_yuv444_709fr */
             (32 << 24) | (67 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+#else
             /* XRDP_nv12 */
-            //(12 << 24) | (64 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+            (12 << 24) | (64 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
+#endif
         self->process_enc = process_enc_h264;
 #if defined(XRDP_X264)
         self->codec_handle = xrdp_encoder_x264_create();
@@ -807,8 +815,8 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 #elif defined(XRDP_OPENH264)
     error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
                                             enc->width, enc->height, 0,
-                                            enc->data,
-                                            s->p, &out_data_bytes);
+                                            enc->data + (enc->height * enc->width) * 3 / 2,
+                                            s->p, &out_data_bytes1);
 #endif
     if (error != 0)
     {

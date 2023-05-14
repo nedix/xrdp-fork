@@ -51,7 +51,8 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 {
 	SFrameBSInfo info;
 	SSourcePicture *sourcePicture = NULL;
-	int i, j, status;
+	int status;
+	int i, j;
 
 	LOG(LOG_LEVEL_INFO, "xrdp_encoder_openh264_encode:");
 
@@ -59,13 +60,13 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		return 0;
 	}
 
-	struct openh264_context *h264;
-	h264 = (struct openh264_context *) handle;
+	struct openh264_context *h264 = (struct openh264_context *) handle;
 
 	if (h264->pEncoder == NULL) {
 		xrdp_encoder_openh264_open(h264, enc_width, enc_height);
 	}
 
+	memset(&info, 0, sizeof(info));
 	sourcePicture = &h264->pic1;
 
 	h264->frameRate = 24;
@@ -80,24 +81,30 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 	status = (*h264->pEncoder)->EncodeFrame(h264->pEncoder, sourcePicture, &info);
 
 	if (status != 0) {
-		LOG(LOG_LEVEL_ERROR, "Failed to encode frame");
+		LOG(LOG_LEVEL_INFO, "Failed to encode frame");
 		return 0;
 	}
 
 	if (info.eFrameType == videoFrameTypeSkip) {
-		LOG(LOG_LEVEL_WARNING, "frame was skipped!");
+		LOG(LOG_LEVEL_INFO, "frame was skipped!");
 		return 0;
 	}
 
+	// *cdata_bytes = info.iFrameSizeInBytes;
+	// g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
+
 	*cdata_bytes = 0;
-
 	for (i = 0; i < info.iLayerNum; i++) {
-		for (j = 0; j < info.sLayerInfo[i].iNalCount; j++) {
-			*cdata_bytes += info.sLayerInfo[i].pNalLengthInByte[j];
+		SLayerBSInfo *layer = info.sLayerInfo + i;
+		int size = 0;
+		for (j = 0; j < layer->iNalCount; j++) {
+			size += layer->pNalLengthInByte[j];
 		}
+		LOG(LOG_LEVEL_INFO, "OpenH264 layer: %d, Size: %d", i, size);
+		g_memcpy(cdata + *cdata_bytes, layer->pBsBuf, size);
+		*cdata_bytes += size;
 	}
-
-	g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
+	LOG(LOG_LEVEL_INFO, "OpenH264 total size: %d", *cdata_bytes);
 
 	return 0;
 }
@@ -203,23 +210,23 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 		goto err;
 	}
 
-	if (!(h264->pic2.pData[0] = (unsigned char*) g_malloc(ysize, 1))) {
-		goto err;
-	}
-	if (!(h264->pic2.pData[1] = (unsigned char*) g_malloc(usize, 1))) {
-		goto err;
-	}
-	if (!(h264->pic2.pData[2] = (unsigned char*) g_malloc(vsize, 1))) {
-		goto err;
-	}
+	// if (!(h264->pic2.pData[0] = (unsigned char*) g_malloc(ysize, 1))) {
+	// 	goto err;
+	// }
+	// if (!(h264->pic2.pData[1] = (unsigned char*) g_malloc(usize, 1))) {
+	// 	goto err;
+	// }
+	// if (!(h264->pic2.pData[2] = (unsigned char*) g_malloc(vsize, 1))) {
+	// 	goto err;
+	// }
 
 	memset(h264->pic1.pData[0], 0, ysize);
 	memset(h264->pic1.pData[1], 0, usize);
 	memset(h264->pic1.pData[2], 0, vsize);
 
-	memset(h264->pic2.pData[0], 0, ysize);
-	memset(h264->pic2.pData[1], 0, usize);
-	memset(h264->pic2.pData[2], 0, vsize);
+	// memset(h264->pic2.pData[0], 0, ysize);
+	// memset(h264->pic2.pData[1], 0, usize);
+	// memset(h264->pic2.pData[2], 0, vsize);
 
 	//if ((create_openh264_encoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
 	if ((WelsCreateSVCEncoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
