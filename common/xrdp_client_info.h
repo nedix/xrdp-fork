@@ -216,7 +216,16 @@ struct xrdp_client_info
     int gfx;
 };
 
+enum xrdp_encoder_flags {
+    NONE                                   = 0,
+    ENCODE_COMPLETE                        = 1 << 0,
+    CONTAINS_DUAL_FRAME_AVC444             = 1 << 1,
+    CONTAINS_SINGLE_FRAME_AVC444_YUV420    = 1 << 2,
+    CONTAINS_SINGLE_FRAME_AVC444_CHROMA420 = 1 << 3,
+    CONTAINS_KEY_FRAME                     = 1 << 4
+};
+
 /* yyyymmdd of last incompatible change to xrdp_client_info */
-#define CLIENT_INFO_CURRENT_VERSION 20220428
+#define CLIENT_INFO_CURRENT_VERSION 20230520
 
 #endif

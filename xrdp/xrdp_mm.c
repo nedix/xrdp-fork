@@ -3302,12 +3302,12 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
         }
         /* do something with msg */
         LOG_DEVEL(LOG_LEVEL_DEBUG, "xrdp_mm_process_enc_done: message back bytes %d",
-                  enc_done->comp_bytes);
+                  enc_done->comp_bytes1);
         x = enc_done->x;
         y = enc_done->y;
         cx = enc_done->cx;
         cy = enc_done->cy;
-        if (enc_done->comp_bytes > 0)
+        if (enc_done->comp_bytes1 > 0)
         {
             LOG_DEVEL(LOG_LEVEL_TRACE, "xrdp_mm_process_enc_done: x %d y %d cx %d cy %d "
                       "frame_id %d use_frame_acks %d", x, y, cx, cy,
@@ -3321,16 +3321,21 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                 rect.y1 = y;
                 rect.x2 = x + cx;
                 rect.y2 = y + cy;
-                xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
 #if AVC444
-                                                XR_RDPGFX_CODECID_AVC444V2,
+                xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
+                    XR_RDPGFX_CODECID_AVC444V2,
+                    XR_PIXEL_FORMAT_XRGB_8888,
+                    &rect,
+                    enc_done->comp_pad_data1 + enc_done->pad_bytes1,
+                    enc_done->comp_bytes1);
 #else
-                                                XR_RDPGFX_CODECID_AVC420,
+                xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
+                    XR_RDPGFX_CODECID_AVC420,
+                    XR_PIXEL_FORMAT_XRGB_8888,
+                    &rect,
+                    enc_done->comp_pad_data1 + enc_done->pad_bytes1,
+                    enc_done->comp_bytes1);
 #endif
-                                                XR_PIXEL_FORMAT_XRGB_8888,
-                                                &rect,
-                                                enc_done->comp_pad_data + enc_done->pad_bytes,
-                                                enc_done->comp_bytes);
                 xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
             }
             else if (enc_done->flags & 2) /* gfx progressive rfx */
@@ -3339,8 +3344,8 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                                            enc_done->enc->frame_id, 0);
                 xrdp_egfx_send_wire_to_surface2(self->egfx, self->egfx->surface_id, 9, 1,
                                                 XR_PIXEL_FORMAT_XRGB_8888,
-                                                enc_done->comp_pad_data + enc_done->pad_bytes,
-                                                enc_done->comp_bytes);
+                                                enc_done->comp_pad_data1 + enc_done->pad_bytes1,
+                                                enc_done->comp_bytes1);
                 xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
             }
             else
@@ -3348,9 +3353,9 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                 libxrdp_fastpath_send_frame_marker(self->wm->session, 0,
                                                    enc_done->enc->frame_id);
                 libxrdp_fastpath_send_surface(self->wm->session,
-                                              enc_done->comp_pad_data,
-                                              enc_done->pad_bytes,
-                                              enc_done->comp_bytes,
+                                              enc_done->comp_pad_data1,
+                                              enc_done->pad_bytes1,
+                                              enc_done->comp_bytes1,
                                               x, y, x + cx, y + cy,
                                               32, self->encoder->codec_id,
                                               cx, cy);
@@ -3396,7 +3401,7 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
             g_free(enc_done->enc->crects);
             g_free(enc_done->enc);
         }
-        g_free(enc_done->comp_pad_data);
+        g_free(enc_done->comp_pad_data1);
         g_free(enc_done);
     }
     return 0;
@@ -3762,6 +3767,51 @@ server_composite(struct xrdp_mod *mod, int srcidx, int srcformat,
     return 0;
 }
 
+XRDP_ENC_DATA *
+create_enc_data(int num_drects, short *drects, int num_crects, short *crects,
+                char *data, int width, int height, int flags, int frame_id) {
+    XRDP_ENC_DATA *enc_data;
+    /* copy formal params to XRDP_ENC_DATA */
+    enc_data = (XRDP_ENC_DATA *) g_malloc(sizeof(XRDP_ENC_DATA), 1);
+    if (enc_data == 0)
+    {
+        return 0;
+    }
+
+    enc_data->drects = (short *)
+                        g_malloc(sizeof(short) * num_drects * 4, 0);
+    if (enc_data->drects == 0)
+    {
+        g_free(enc_data);
+        return 0;
+    }
+
+    enc_data->crects = (short *)
+                        g_malloc(sizeof(short) * num_crects * 4, 0);
+    if (enc_data->crects == 0)
+    {
+        g_free(enc_data->drects);
+        g_free(enc_data);
+        return 0;
+    }
+
+    g_memcpy(enc_data->drects, drects, sizeof(short) * num_drects * 4);
+    g_memcpy(enc_data->crects, crects, sizeof(short) * num_crects * 4);
+
+    enc_data->num_drects = num_drects;
+    enc_data->num_crects = num_crects;
+    enc_data->data = data;
+    enc_data->width = width;
+    enc_data->height = height;
+    enc_data->flags = flags;
+    enc_data->frame_id = frame_id;
+    if (width == 0 || height == 0)
+    {
+        LOG_DEVEL(LOG_LEVEL_WARNING, "server_paint_rects: error");
+    }
+    return enc_data;
+}
+
 /*****************************************************************************/
 int
 server_paint_rects(struct xrdp_mod *mod, int num_drects, short *drects,
@@ -3783,50 +3833,40 @@ server_paint_rects(struct xrdp_mod *mod, int num_drects, short *drects,
 
     if (mm->encoder != 0)
     {
-        /* copy formal params to XRDP_ENC_DATA */
-        enc_data = (XRDP_ENC_DATA *) g_malloc(sizeof(XRDP_ENC_DATA), 1);
-        if (enc_data == 0)
-        {
-            return 1;
+         if (flags & CONTAINS_DUAL_FRAME_AVC444) {
+            enc_data = create_enc_data(num_drects, drects, num_crects, crects, 
+                            data, width, height, flags, frame_id);
+            enc_data->mod = mod;
+            enc_data->flags = CONTAINS_SINGLE_FRAME_AVC444_YUV420;
+            /* insert into fifo for encoder thread to process */
+            tc_mutex_lock(mm->encoder->mutex);
+            fifo_add_item(mm->encoder->fifo_to_proc, (void *) enc_data);
+            tc_mutex_unlock(mm->encoder->mutex);
+
+            // // Add two encodes here.
+            // enc_data = create_enc_data(num_drects, drects, num_crects, crects,
+            //                 data, width, height, flags, frame_id);
+            // enc_data->mod = mod;
+            // enc_data->data = data + (height * width) * 3 / 2;
+            // enc_data->flags = CONTAINS_SINGLE_FRAME_AVC444_CHROMA420;
+            // /* insert into fifo for encoder thread to process */
+            // tc_mutex_lock(mm->encoder->mutex);
+            // fifo_add_item(mm->encoder->fifo_to_proc, (void *) enc_data);
+            // tc_mutex_unlock(mm->encoder->mutex);
+
+            // CONTAINS_SINGLE_FRAME_AVC444_YUV420    = 1 << 2,
+            // CONTAINS_SINGLE_FRAME_AVC444_CHROMA420 = 1 << 3,
         }
-
-        enc_data->drects = (short *)
-                           g_malloc(sizeof(short) * num_drects * 4, 0);
-        if (enc_data->drects == 0)
+        else
         {
-            g_free(enc_data);
-            return 1;
+            enc_data = create_enc_data(num_drects, drects, num_crects, crects, 
+                                   data, width, height, flags, frame_id);
+            enc_data->mod = mod;
+            /* insert into fifo for encoder thread to process */
+            tc_mutex_lock(mm->encoder->mutex);
+            fifo_add_item(mm->encoder->fifo_to_proc, (void *) enc_data);
+            tc_mutex_unlock(mm->encoder->mutex);
         }
-
-        enc_data->crects = (short *)
-                           g_malloc(sizeof(short) * num_crects * 4, 0);
-        if (enc_data->crects == 0)
-        {
-            g_free(enc_data->drects);
-            g_free(enc_data);
-            return 1;
-        }
-
-        g_memcpy(enc_data->drects, drects, sizeof(short) * num_drects * 4);
-        g_memcpy(enc_data->crects, crects, sizeof(short) * num_crects * 4);
-
-        enc_data->mod = mod;
-        enc_data->num_drects = num_drects;
-        enc_data->num_crects = num_crects;
-        enc_data->data = data;
-        enc_data->width = width;
-        enc_data->height = height;
-        enc_data->flags = flags;
-        enc_data->frame_id = frame_id;
-        if (width == 0 || height == 0)
-        {
-            LOG_DEVEL(LOG_LEVEL_WARNING, "server_paint_rects: error");
-        }
-
-        /* insert into fifo for encoder thread to process */
-        tc_mutex_lock(mm->encoder->mutex);
-        fifo_add_item(mm->encoder->fifo_to_proc, (void *) enc_data);
-        tc_mutex_unlock(mm->encoder->mutex);
 
         /* signal xrdp_encoder thread */
         g_set_wait_obj(mm->encoder->xrdp_encoder_event_to_proc);

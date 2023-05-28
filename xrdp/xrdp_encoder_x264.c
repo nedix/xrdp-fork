@@ -124,16 +124,19 @@ xrdp_encoder_x264_encode(void *handle, int session,
         {
             //x264_param_default_preset(&(xe->x264_params), "superfast", "zerolatency");
             //x264_param_default_preset(&(xe->x264_params), "ultrafast", "zerolatency");
-            x264_param_default_preset(&(xe->x264_params), "medium", "zerolatency");
-            
+            x264_param_default_preset(&(xe->x264_params), "ultrafast", "zerolatency");
+            x264_param_apply_profile(&(xe->x264_params), "baseline");
             xe->x264_params.i_width = width;
             xe->x264_params.i_height = height;
             xe->x264_params.i_threads = 1;
+            xe->x264_params.b_open_gop = 1;
             xe->x264_params.i_fps_num = 60;
             xe->x264_params.i_fps_den = 1;
-            xe->x264_params.i_slice_max_size = 0;
-            xe->x264_params.b_vfr_input = 0;
-            xe->x264_params.b_sliced_threads = 0;
+            //xe->x264_params.i_slice_max_size = 0;
+            //xe->x264_params.b_vfr_input = 0;
+            //xe->x264_params.b_sliced_threads = 0;
+            //xe->x264_params.i_nal_hrd = 0;
+            //xe->x264_params.b_pic_struct = 0;
             //xe->x264_params.b_repeat_headers = 1;
             //xe->x264_params.i_bframe = 2;
             //xe->x264_params.i_keyint_max = 2;
@@ -141,20 +144,20 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.i_bframe = 0;
             //xe->x264_params.b_full_recon = 1;
             //xe->x264_params.b_vfr_input = 0;
-            //xe->x264_params.b_annexb = 1;
+            //xe->x264_params.b_annexb = 0;
             //xe->x264_params.i_bframe_pyramid = 1;
             //xe->x264_params.i_bframe_adaptive = 1;
-            //xe->x264_params.b_interlaced = 1;
+            xe->x264_params.b_interlaced = 0;
+            //xe->x264_params.b_fake_interlaced = 1;
             xe->x264_params.rc.i_rc_method = X264_RC_CQP;
             xe->x264_params.rc.i_qp_constant = 23;
-            //xe->x264_params.i_frame_packing = 1;
+            xe->x264_params.i_frame_packing = 6;
             //xe->x264_params.i_bframe_adaptive = 1;
-            //xe->x264_params.b_pic_struct = 1;
+            xe->x264_params.b_pic_struct = 1;
             //xe->x264_params.b_stitchable = 0;
-            //xe->x264_params.b_fake_interlaced = 1;
             //xe->x264_params.rc.b_mb_tree = 1;
             //x264_param_apply_profile(&(xe->x264_params), "high");
-            x264_param_apply_profile(&(xe->x264_params), "high");
+            
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
             if (xe->x264_enc_han == 0)
             {
@@ -202,6 +205,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
         g_memset(&pic_in, 0, sizeof(pic_in));
         pic_in.img.i_csp = X264_CSP_I420;
         pic_in.img.i_plane = 3;
+        pic_in.i_pic_struct = format + 2;
         pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
         pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
         pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
@@ -209,7 +213,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
         pic_in.img.i_stride[2] = xe->x264_params.i_width / 2;
 
-        pic_in.i_pic_struct = PIC_STRUCT_AUTO;
+        //pic_in.i_pic_struct = PIC_STRUCT_AUTO;
 
         //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
         // Copy input image to x264 picture structure
@@ -219,6 +223,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
 
         //pic_in.param->b_annexb = 1;
         pic_in.param = &xe->x264_params;
+        //pic_in.i_type = X264_TYPE_KEYFRAME;
 
         num_nals = 0;
         frame_size = x264_encoder_encode(xe->x264_enc_han, &nals, &num_nals,
@@ -234,23 +239,176 @@ xrdp_encoder_x264_encode(void *handle, int session,
         {
             return 4;
         }
-        //int total_size = 0;
-        for (int i = 0; i < num_nals; i++) {
-            nals[i].i_ref_idc = 1;
-            nals[i].i_type = X264_TYPE_AUTO;
-            //total_size += nals[i].i_payload;
+        int total_size = 0;
+        for (int i = 0; i < num_nals; ++i) {
+            x264_nal_t *nal = nals + i;
+            LOG(LOG_LEVEL_INFO, "The nal type of %d is %d", i, nal->i_type);
+            // if (nal->i_type == NAL_SEI) {
+            //     LOG(LOG_LEVEL_INFO, "Skipping SEI nal.");
+            //     continue;
+            // }
+            // if (nal->i_type == NAL_PPS) {
+            //     g_hexdump((const char*)nal->p_payload, nal->i_payload);
+            // }
+            int size = nal->i_payload;
+            g_memcpy(cdata + total_size, nal->p_payload, size);
+            total_size += size;
         }
-        // if (nals[0].i_type == NAL_SLICE_IDR) {
-        //     nals[0].i
-        //     uint8_t *p = nals[0].p_payload;
-        //     p[0] = 0;
-        // }
-        g_memcpy(cdata, nals[0].p_payload, frame_size);
-        *cdata_bytes = frame_size;
-        //x264_picture_clean(&pic_in);
+        *cdata_bytes = total_size;
+
+        //g_memcpy(cdata, nals[0].p_payload, frame_size);
+        //*cdata_bytes = frame_size;
     }
     return 0;
 }
+
+// bitStreamReader->U(8);
+
+// 1 + 1 + 1 + 1 + 4 + 8
+// 			seq_parameter_set_id = bitStreamReader->Uev();
+
+// 			if (profile_idc  == 100 || profile_idc  == 110 ||
+// 				profile_idc  == 122 || profile_idc  == 144)
+// 			{
+
+// 				chroma_format_idc = bitStreamReader->Uev();
+
+// 				if (chroma_format_idc == 3)
+// 				{
+// 					separate_colour_plane_flag = bitStreamReader->U(1);
+// 				}
+
+// 				bit_depth_luma_minus8 = bitStreamReader->Uev();
+// 				bit_depth_chroma_minus8 = bitStreamReader->Uev();
+// 				qpprime_y_zero_transform_bypass_flag  = bitStreamReader->U(1);
+// 				seq_scaling_matrix_present_flag =  bitStreamReader->U(1);
+
+// 				if( seq_scaling_matrix_present_flag )
+// 				{
+// 					for(unsigned int ix = 0; ix < 8; ix++)
+// 					{
+// 						temp = bitStreamReader->U(1);
+
+// 						if (temp)
+// 						{
+// 							ScalingList(ix, ix < 6 ? 16 : 64);
+// 						}
+// 					}
+// 				}
+// 			}
+
+
+// 			log2_max_frame_num_minus4 = bitStreamReader->Uev();
+
+// 			pic_order_cnt_type =  bitStreamReader->Uev();
+
+// 			if (pic_order_cnt_type == 0)
+// 			{
+// 				log2_max_pic_order_cnt_lsb_minus4 = bitStreamReader->Uev();
+
+// 			}
+
+// 			else if (pic_order_cnt_type == 1)
+// 			{
+// 				delta_pic_order_always_zero_flag = bitStreamReader->U(1);
+// 				offset_for_non_ref_pic = bitStreamReader->Sev();
+// 				offset_for_top_to_bottom_field =  bitStreamReader->Sev();
+
+// 				num_ref_frames_in_pic_order_cnt_cycle = bitStreamReader->Uev();
+
+// 				for( int i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++ )
+// 				{
+
+// 					int skippedParameter = bitStreamReader->Sev();
+// 				}
+
+// 			}
+
+
+
+// 			num_ref_frames = bitStreamReader->Uev();
+// 			gaps_in_frame_num_value_allowed_flag = bitStreamReader->U(1);
+
+// 			pic_width_in_mbs_minus1 = bitStreamReader->Uev();
+// 			pic_height_in_map_units_minus1 = bitStreamReader->Uev();
+
+
+// profile_idc  =  bitStreamReader->U(8);
+
+// 			constraint_set0_flag = bitStreamReader->U(1);
+// 			constraint_set1_flag = bitStreamReader->U(1);
+// 			constraint_set2_flag = bitStreamReader->U(1);
+// 			constraint_set3_flag = bitStreamReader->U(1);
+// 			reserved_zero_4bits = bitStreamReader->U(4);
+
+// 			level_idc = bitStreamReader->U(8);
+// 			seq_parameter_set_id = bitStreamReader->Uev();
+
+// 			if (profile_idc  == 100 || profile_idc  == 110 ||
+// 				profile_idc  == 122 || profile_idc  == 144)
+// 			{
+
+// 				chroma_format_idc = bitStreamReader->Uev();
+
+// 				if (chroma_format_idc == 3)
+// 				{
+// 					separate_colour_plane_flag = bitStreamReader->U(1);
+// 				}
+
+// 				bit_depth_luma_minus8 = bitStreamReader->Uev();
+// 				bit_depth_chroma_minus8 = bitStreamReader->Uev();
+// 				qpprime_y_zero_transform_bypass_flag  = bitStreamReader->U(1);
+// 				seq_scaling_matrix_present_flag =  bitStreamReader->U(1);
+
+// 				if( seq_scaling_matrix_present_flag )
+// 				{
+// 					for(unsigned int ix = 0; ix < 8; ix++)
+// 					{
+// 						temp = bitStreamReader->U(1);
+
+// 						if (temp)
+// 						{
+// 							ScalingList(ix, ix < 6 ? 16 : 64);
+// 						}
+// 					}
+// 				}
+// 			}
+
+
+// 			log2_max_frame_num_minus4 = bitStreamReader->Uev();
+
+// 			pic_order_cnt_type =  bitStreamReader->Uev();
+
+// 			if (pic_order_cnt_type == 0)
+// 			{
+// 				log2_max_pic_order_cnt_lsb_minus4 = bitStreamReader->Uev();
+
+// 			}
+
+// 			else if (pic_order_cnt_type == 1)
+// 			{
+// 				delta_pic_order_always_zero_flag = bitStreamReader->U(1);
+// 				offset_for_non_ref_pic = bitStreamReader->Sev();
+// 				offset_for_top_to_bottom_field =  bitStreamReader->Sev();
+
+// 				num_ref_frames_in_pic_order_cnt_cycle = bitStreamReader->Uev();
+
+// 				for( int i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++ )
+// 				{
+
+// 					int skippedParameter = bitStreamReader->Sev();
+// 				}
+
+// 			}
+
+
+
+// 			num_ref_frames = bitStreamReader->Uev();
+// 			gaps_in_frame_num_value_allowed_flag = bitStreamReader->U(1);
+
+// 			pic_width_in_mbs_minus1 = bitStreamReader->Uev();
+// 			pic_height_in_map_units_minus1 = bitStreamReader->Uev();
+
 
 
 // /*****************************************************************************/
