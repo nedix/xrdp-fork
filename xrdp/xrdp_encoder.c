@@ -40,7 +40,7 @@
 #include "xrdp_encoder_openh264.h"
 #endif
 
-#define XRDP_SURCMD_PREFIX_BYTES 256
+#define XRDP_SURCMD_PREFIX_BYTES 0x100
 
 #ifdef XRDP_RFXCODEC
 /* LH3 LL3, HH3 HL3, HL2 LH2, LH1 HH2, HH1 HL1 todo check this */
@@ -690,7 +690,7 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
     }
 
     out_data_bytes = 128 * 1024 * 1024;
-    index = 256 + 16 + 2 + enc->num_drects * 8;
+    index = XRDP_SURCMD_PREFIX_BYTES + 16 + 2 + enc->num_drects * 8;
     out_data = g_new(char, out_data_bytes + index);
     if (out_data == NULL)
     {
@@ -699,7 +699,7 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 
     s = &ls;
     g_memset(s, 0, sizeof(struct stream));
-    ls.data = out_data + 256;
+    ls.data = out_data + XRDP_SURCMD_PREFIX_BYTES;
     ls.p = ls.data;
 
 #if AVC444
@@ -850,7 +850,7 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 #else
     enc_done->comp_bytes = comp_bytes_pre + out_data_bytes;
 #endif
-    enc_done->pad_bytes1 = 256;
+    enc_done->pad_bytes1 = XRDP_SURCMD_PREFIX_BYTES;
     enc_done->comp_pad_data1 = out_data;
     enc_done->enc = enc;
     enc_done->last = 1;
