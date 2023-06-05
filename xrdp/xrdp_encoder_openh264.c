@@ -98,6 +98,12 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		SLayerBSInfo *layer = info.sLayerInfo + i;
 		int size = 0;
 		for (j = 0; j < layer->iNalCount; j++) {
+			// Modify the bitstream start code to 4 bytes
+			unsigned char* nalStart = layer->pBsBuf + layer->pNalLengthInByte[j];
+			memmove(nalStart + 4, nalStart, layer->pNalLengthInByte[j]);
+			memcpy(nalStart, "\x00\x00\x00\x01", 4);
+			// Adjust the NAL length
+			layer->pNalLengthInByte[j] += 4;
 			size += layer->pNalLengthInByte[j];
 		}
 		LOG(LOG_LEVEL_INFO, "OpenH264 layer: %d, Size: %d", i, size);
@@ -261,6 +267,9 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 	encParamExt.sSpatialLayers[0].sSliceArgument.uiSliceMode = SM_SINGLE_SLICE;
 	encParamExt.sSpatialLayers[0].sSliceArgument.uiSliceNum = 1;
 
+	encParamExt.iEntropyCodingModeFlag = 0;
+	encParamExt.bEnableFrameCroppingFlag = 0;
+
 	if (encParamExt.iMultipleThreadIdc > 1) {
 		encParamExt.sSpatialLayers[0].sSliceArgument.uiSliceMode = SM_FIXEDSLCNUM_SLICE;
 		encParamExt.sSpatialLayers[0].sSliceArgument.uiSliceNum = encParamExt.iMultipleThreadIdc;
@@ -288,7 +297,6 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 		LOG(LOG_LEVEL_ERROR, "Failed to get encoder max bitrate");
 		goto err;
 	}
-
 	h264->maxBitRate = bitrate.iBitrate;
 	/* WLog_DBG(TAG, "maxBitRate: %"PRIu32"", h264->maxBitRate); */
 

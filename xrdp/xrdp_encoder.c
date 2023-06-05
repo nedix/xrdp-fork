@@ -716,7 +716,6 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
         /* RFX_AVC420_METABLOCK */
         comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount,
                                                     scr_width, scr_height);
-        comp_bytes_pre = 4 + rcount * 8 + rcount * 2;
         enc_done_flags = 1;
     }
     else
