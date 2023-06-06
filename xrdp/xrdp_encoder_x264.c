@@ -26,7 +26,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
-#include <byteswap.h>
 #include <x264.h>
 #include "log.h"
 
@@ -150,7 +149,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.b_vfr_input = 0;
             //xe->x264_params.i_bframe_pyramid = 1;
             //xe->x264_params.i_bframe_adaptive = 1;
-            //xe->x264_params.b_interlaced = 0;
+            //xe->x264_params.b_interlaced = 1;
             //xe->x264_params.b_fake_interlaced = 1;
             //xe->x264_params.i_frame_packing = 6;
             //xe->x264_params.i_bframe_adaptive = 1;
@@ -158,7 +157,8 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.b_stitchable = 0;
             //xe->x264_params.rc.b_mb_tree = 1;
             //xe->x264_params.b_annexb = 0;
-            x264_param_apply_profile(&(xe->x264_params), "high");
+            x264_param_apply_profile(&(xe->x264_params), "baseline");
+            xe->x264_params.i_slice_count = 1;
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
             if (xe->x264_enc_han == 0)
             {
@@ -214,21 +214,19 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
         pic_in.img.i_stride[2] = xe->x264_params.i_width / 2;
 
-        //pic_in.i_pic_struct = PIC_STRUCT_AUTO;
+        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
 
         //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
         // Copy input image to x264 picture structure
         //memcpy(pic_in.img.plane[0], data, full_size);
         //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
         //memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
-        //pic_in.param->b_annexb = 1;
         pic_in.param = &xe->x264_params;
-        //pic_in.i_type = X264_TYPE_KEYFRAME;
+        pic_in.i_type = X264_TYPE_AUTO;
 
         num_nals = 0;
         frame_size = x264_encoder_encode(xe->x264_enc_han, &nals, &num_nals,
                                          &pic_in, &pic_out);
-
 
         if (frame_size < 1)
         {
@@ -246,14 +244,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
             uint8_t* payload = nal->p_payload;
             char* write_location = cdata + total_size;
             int nalUnitType = nal->i_type;
-            uint32_t t;
-            // Check slice type
-            // if ((nalUnitType == 1 || nalUnitType == 2) && nal->i_ref_idc != 0)
-            // {
-            //     // B-frame detected
-            //     LOG(LOG_LEVEL_INFO, "B-frame found!\n");
-            //     continue;
-            // }
 
             switch (nalUnitType)
             {
@@ -261,20 +251,12 @@ xrdp_encoder_x264_encode(void *handle, int session,
                 case NAL_SLICE_IDR:
                 case NAL_SPS:
                 case NAL_PPS:
-                case NAL_AUD:
-                    //LOG(LOG_LEVEL_INFO, "P: 0x%02X, 0x%02X, 0x%02X, 0x%02X", payload[0], payload[1], payload[2], payload[3]);
-                    //= payload[0] >> 4 | payload[1] >> 3 | payload[2] >> 2 | payload[3];
-                    g_memcpy(&t, payload, 4);
-                    t = bswap_32(t);
-                    if (t != 0x00000001)
+                    if (!nal->b_long_startcode)
                     {
                         const char *d = "\x00\x00\x00\x01";
                         g_memcpy(write_location, d, 4);
                         g_memcpy(write_location + 4, payload + 3, size - 3);
                         size += 1;
-                        g_memcpy(&t, write_location, 4);
-                        t = bswap_32(t);
-                        LOG(LOG_LEVEL_INFO, "P Int: 0x%08X", t);
                     }
                     else
                     {
