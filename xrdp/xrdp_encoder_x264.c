@@ -134,13 +134,13 @@ xrdp_encoder_x264_encode(void *handle, int session,
             xe->x264_params.i_fps_den = 1;
             xe->x264_params.rc.i_rc_method = X264_RC_CQP;
             xe->x264_params.rc.i_qp_constant = 23;
-            //xe->x264_params.b_open_gop = 1;
+
             //xe->x264_params.i_slice_max_size = 0;
             //xe->x264_params.b_vfr_input = 0;
             //xe->x264_params.b_sliced_threads = 0;
             //xe->x264_params.i_nal_hrd = 0;
             //xe->x264_params.b_pic_struct = 0;
-            //xe->x264_params.b_repeat_headers = 1;
+
             //xe->x264_params.i_bframe = 2;
             //xe->x264_params.i_keyint_max = 2;
             //xe->x264_params.b_cabac = 1;
@@ -158,7 +158,12 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.rc.b_mb_tree = 1;
             //xe->x264_params.b_annexb = 0;
             x264_param_apply_profile(&(xe->x264_params), "baseline");
-            xe->x264_params.i_slice_count = 1;
+            //xe->x264_params.i_slice_count = 1;
+            xe->x264_params.i_nal_hrd = 0;
+            xe->x264_params.b_repeat_headers = 1;
+            xe->x264_params.b_aud = 0;
+            xe->x264_params.b_pic_struct = 1;
+            xe->x264_params.i_bframe = 0;
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
             if (xe->x264_enc_han == 0)
             {
@@ -206,7 +211,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
         g_memset(&pic_in, 0, sizeof(pic_in));
         pic_in.img.i_csp = X264_CSP_I420;
         pic_in.img.i_plane = 3;
-        pic_in.i_pic_struct = format + 2;
         pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
         pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
         pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
@@ -214,7 +218,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
         pic_in.img.i_stride[2] = xe->x264_params.i_width / 2;
 
-        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
+        pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
 
         //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
         // Copy input image to x264 picture structure
@@ -222,7 +226,14 @@ xrdp_encoder_x264_encode(void *handle, int session,
         //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
         //memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
         pic_in.param = &xe->x264_params;
-        pic_in.i_type = X264_TYPE_AUTO;
+        // if (format == 1)
+        // {
+        //     pic_in.i_type = X264_TYPE_KEYFRAME;
+        // }
+        // else
+        // {
+        //     pic_in.i_type = X264_TYPE_I;
+        // }
 
         num_nals = 0;
         frame_size = x264_encoder_encode(xe->x264_enc_han, &nals, &num_nals,
@@ -245,28 +256,30 @@ xrdp_encoder_x264_encode(void *handle, int session,
             char* write_location = cdata + total_size;
             int nalUnitType = nal->i_type;
 
+            LOG(LOG_LEVEL_INFO, "NalType is %d. Format is %d", nalUnitType, format);
+
             switch (nalUnitType)
             {
-                case NAL_SLICE:
-                case NAL_SLICE_IDR:
                 case NAL_SPS:
                 case NAL_PPS:
-                    if (!nal->b_long_startcode)
-                    {
-                        const char *d = "\x00\x00\x00\x01";
-                        g_memcpy(write_location, d, 4);
-                        g_memcpy(write_location + 4, payload + 3, size - 3);
-                        size += 1;
-                    }
-                    else
+                case NAL_SLICE:
+                case NAL_SLICE_IDR:
+                    total_size += size;
+                    if (nal->b_long_startcode)
                     {
                         g_memcpy(write_location, payload, size);
+                        break;
                     }
-                    total_size += size;
+                    LOG(LOG_LEVEL_INFO, "Expanding start code %d.", nalUnitType);
+                    g_memcpy(write_location, "\x00\x00\x00\x01", 4);
+                    g_memcpy(write_location + 4, payload + 3, size - 3);
+                    total_size += 1;
                     break;
                 default:
+                    LOG(LOG_LEVEL_INFO, "Skipping NAL of type %d.", nalUnitType);
                     continue;
             }
+            LOG(LOG_LEVEL_INFO, "end frame.");
         }
         *cdata_bytes = total_size;
 
@@ -275,249 +288,3 @@ xrdp_encoder_x264_encode(void *handle, int session,
     }
     return 0;
 }
-
-// bitStreamReader->U(8);
-
-// 1 + 1 + 1 + 1 + 4 + 8
-// 			seq_parameter_set_id = bitStreamReader->Uev();
-
-// 			if (profile_idc  == 100 || profile_idc  == 110 ||
-// 				profile_idc  == 122 || profile_idc  == 144)
-// 			{
-
-// 				chroma_format_idc = bitStreamReader->Uev();
-
-// 				if (chroma_format_idc == 3)
-// 				{
-// 					separate_colour_plane_flag = bitStreamReader->U(1);
-// 				}
-
-// 				bit_depth_luma_minus8 = bitStreamReader->Uev();
-// 				bit_depth_chroma_minus8 = bitStreamReader->Uev();
-// 				qpprime_y_zero_transform_bypass_flag  = bitStreamReader->U(1);
-// 				seq_scaling_matrix_present_flag =  bitStreamReader->U(1);
-
-// 				if( seq_scaling_matrix_present_flag )
-// 				{
-// 					for(unsigned int ix = 0; ix < 8; ix++)
-// 					{
-// 						temp = bitStreamReader->U(1);
-
-// 						if (temp)
-// 						{
-// 							ScalingList(ix, ix < 6 ? 16 : 64);
-// 						}
-// 					}
-// 				}
-// 			}
-
-
-// 			log2_max_frame_num_minus4 = bitStreamReader->Uev();
-
-// 			pic_order_cnt_type =  bitStreamReader->Uev();
-
-// 			if (pic_order_cnt_type == 0)
-// 			{
-// 				log2_max_pic_order_cnt_lsb_minus4 = bitStreamReader->Uev();
-
-// 			}
-
-// 			else if (pic_order_cnt_type == 1)
-// 			{
-// 				delta_pic_order_always_zero_flag = bitStreamReader->U(1);
-// 				offset_for_non_ref_pic = bitStreamReader->Sev();
-// 				offset_for_top_to_bottom_field =  bitStreamReader->Sev();
-
-// 				num_ref_frames_in_pic_order_cnt_cycle = bitStreamReader->Uev();
-
-// 				for( int i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++ )
-// 				{
-
-// 					int skippedParameter = bitStreamReader->Sev();
-// 				}
-
-// 			}
-
-
-
-// 			num_ref_frames = bitStreamReader->Uev();
-// 			gaps_in_frame_num_value_allowed_flag = bitStreamReader->U(1);
-
-// 			pic_width_in_mbs_minus1 = bitStreamReader->Uev();
-// 			pic_height_in_map_units_minus1 = bitStreamReader->Uev();
-
-
-// profile_idc  =  bitStreamReader->U(8);
-
-// 			constraint_set0_flag = bitStreamReader->U(1);
-// 			constraint_set1_flag = bitStreamReader->U(1);
-// 			constraint_set2_flag = bitStreamReader->U(1);
-// 			constraint_set3_flag = bitStreamReader->U(1);
-// 			reserved_zero_4bits = bitStreamReader->U(4);
-
-// 			level_idc = bitStreamReader->U(8);
-// 			seq_parameter_set_id = bitStreamReader->Uev();
-
-// 			if (profile_idc  == 100 || profile_idc  == 110 ||
-// 				profile_idc  == 122 || profile_idc  == 144)
-// 			{
-
-// 				chroma_format_idc = bitStreamReader->Uev();
-
-// 				if (chroma_format_idc == 3)
-// 				{
-// 					separate_colour_plane_flag = bitStreamReader->U(1);
-// 				}
-
-// 				bit_depth_luma_minus8 = bitStreamReader->Uev();
-// 				bit_depth_chroma_minus8 = bitStreamReader->Uev();
-// 				qpprime_y_zero_transform_bypass_flag  = bitStreamReader->U(1);
-// 				seq_scaling_matrix_present_flag =  bitStreamReader->U(1);
-
-// 				if( seq_scaling_matrix_present_flag )
-// 				{
-// 					for(unsigned int ix = 0; ix < 8; ix++)
-// 					{
-// 						temp = bitStreamReader->U(1);
-
-// 						if (temp)
-// 						{
-// 							ScalingList(ix, ix < 6 ? 16 : 64);
-// 						}
-// 					}
-// 				}
-// 			}
-
-
-// 			log2_max_frame_num_minus4 = bitStreamReader->Uev();
-
-// 			pic_order_cnt_type =  bitStreamReader->Uev();
-
-// 			if (pic_order_cnt_type == 0)
-// 			{
-// 				log2_max_pic_order_cnt_lsb_minus4 = bitStreamReader->Uev();
-
-// 			}
-
-// 			else if (pic_order_cnt_type == 1)
-// 			{
-// 				delta_pic_order_always_zero_flag = bitStreamReader->U(1);
-// 				offset_for_non_ref_pic = bitStreamReader->Sev();
-// 				offset_for_top_to_bottom_field =  bitStreamReader->Sev();
-
-// 				num_ref_frames_in_pic_order_cnt_cycle = bitStreamReader->Uev();
-
-// 				for( int i = 0; i < num_ref_frames_in_pic_order_cnt_cycle; i++ )
-// 				{
-
-// 					int skippedParameter = bitStreamReader->Sev();
-// 				}
-
-// 			}
-
-
-
-// 			num_ref_frames = bitStreamReader->Uev();
-// 			gaps_in_frame_num_value_allowed_flag = bitStreamReader->U(1);
-
-// 			pic_width_in_mbs_minus1 = bitStreamReader->Uev();
-// 			pic_height_in_map_units_minus1 = bitStreamReader->Uev();
-
-
-
-// /*****************************************************************************/
-// int
-// xrdp_encoder_openh264_encode(void *handle, int session, int width, int height, int format, const char *data, char *cdata, int *cdata_bytes)
-// {
-//     struct oh264_global *og;
-//     SSourcePicture pic_in;
-//     SFrameBSInfo frame_out;
-//     ISVCEncoder *encoder;
-//     EResult result;
-//     int frame_size;
-
-//     width = (width + 15) & ~15;
-//     height = (height + 15) & ~15;
-
-//     LOG(LOG_LEVEL_TRACE, "xrdp_encoder_openh264_encode:");
-//     og = (struct oh264_global *) handle;
-//     encoder = og->encoders[session];
-//     if ((encoder == NULL) || (og->width[session] != width) || (og->height[session] != height))
-//     {
-//         if (encoder != NULL)
-//         {
-//             encoder->Uninitialize();
-//             WelsDestroySVCEncoder(encoder);
-//             og->encoders[session] = NULL;
-//             delete[] og->yuvdata[session];
-//             og->yuvdata[session] = NULL;
-//         }
-//         if ((width > 0) && (height > 0))
-//         {
-//             SEncParamBase encParam;
-//             memset(&encParam, 0, sizeof(SEncParamBase));
-//             encParam.iUsageType = CAMERA_VIDEO_REAL_TIME;
-//             encParam.iPicWidth = width;
-//             encParam.iPicHeight = height;
-//             encParam.iTargetBitrate = 256; // Change bitrate as desired
-//             encParam.iRCMode = RC_BITRATE_MODE;
-//             encParam.fMaxFrameRate = 24.0;
-//             encParam.iSpatialLayerNum = 1;
-//             encParam.sSpatialLayers[0].iVideoWidth = width;
-//             encParam.sSpatialLayers[0].iVideoHeight = height;
-//             encParam.sSpatialLayers[0].fFrameRate = encParam.fMaxFrameRate;
-//             encParam.sSpatialLayers[0].iSpatialBitrate = encParam.iTargetBitrate;
-//             encParam.iMaxQP = 40;
-//             encParam.iMinQP = 10;
-//             encParam.iTemporalLayerNum = 1;
-//             encParam.sSpatialLayers[0].iTemporalLayerNum = 1;
-//             encParam.iMultipleThreadIdc = 1;
-//             encoder = NULL;
-//             result = WelsCreateSVCEncoder(&encoder);
-//             if (result != cmResultSuccess || encoder == NULL)
-//             {
-//                 return 1;
-//             }
-//             result = encoder->Initialize(&encParam);
-//             if (result != cmResultSuccess)
-//             {
-//                 encoder->Uninitialize();
-//                 WelsDestroySVCEncoder(encoder);
-//                 return 1;
-//             }
-//             og->yuvdata[session] = new char[width * height * 3 / 2];
-//             if (og->yuvdata[session] == NULL)
-//             {
-//                 encoder->Uninitialize();
-//                 WelsDestroySVCEncoder(encoder);
-//                 return 2;
-//             }
-//         }
-//         og->width[session] = width;
-//         og->height[session] = height;
-//         og->encoders[session] = encoder;
-//     }
-
-//     if ((data != NULL) && (encoder != NULL))
-//     {
-//         pic_in.iColorFormat = EVideoFormatType::videoFormatI420;
-//         pic_in.iStride[0] = width;
-//         pic_in.iStride[1] = pic_in.iStride[2] = width >> 1;
-//         pic_in.pData[0] = (unsigned char *)data;
-//         pic_in.pData[1] = pic_in.pData[0] + width * height;
-//         pic_in.pData[2] = pic_in.pData[1] + width * height / 4;
-
-//         // prepare output buffer
-//         SFrameBSInfo bsInfo = { 0 };
-//         bsInfo.iBufferStatus = 0;
-//         bsInfo.iPayloadSize = *cdata_bytes;
-//         bsInfo.pBsBuf = (uint8_t *)cdata;
-
-//         // encode picture
-//         if (encoder->EncodeFrame(&srcPic, &bsInfo) != 0 ||
-//             bsInfo.iBufferStatus != 1 ||
-//             bsInfo.iLayerNum != 1 ||
-//             bsInfo.iNalCount < 1)
-//         {
-//             return -3;
-//         }
