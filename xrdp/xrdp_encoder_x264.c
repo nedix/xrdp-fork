@@ -216,7 +216,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
         pic_in.img.i_stride[0] = xe->x264_params.i_width;
         pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
-        pic_in.img.i_stride[2] = xe->x264_params.i_width / 2;
+        pic_in.img.i_stride[2] = pic_in.img.i_stride[1];
 
         pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
 

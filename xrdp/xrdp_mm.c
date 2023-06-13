@@ -3314,29 +3314,47 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                       enc_done->enc->frame_id,
                       self->wm->client_info->use_frame_acks);
             if (enc_done->flags & 1) /* gfx h264 */
-            {
-                xrdp_egfx_send_frame_start(self->egfx,
-                                           enc_done->enc->frame_id, 0);
+            {                
                 rect.x1 = x;
                 rect.y1 = y;
                 rect.x2 = x + cx;
                 rect.y2 = y + cy;
 #if AVC444
+                xrdp_egfx_send_frame_start(self->egfx,
+                            enc_done->enc->frame_id, 0);
+
                 xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
                     XR_RDPGFX_CODECID_AVC444V2,
                     XR_PIXEL_FORMAT_XRGB_8888,
                     &rect,
                     enc_done->comp_pad_data1 + enc_done->pad_bytes1,
                     enc_done->comp_bytes1);
+                xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
+
+                enc_done->enc->frame_id++;
+                xrdp_egfx_send_frame_start(self->egfx,
+                            enc_done->enc->frame_id, 0);
+                xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
+                    XR_RDPGFX_CODECID_AVC444V2,
+                    XR_PIXEL_FORMAT_XRGB_8888,
+                    &rect,
+                    enc_done->comp_pad_data2 + enc_done->pad_bytes2,
+                    enc_done->comp_bytes2);
+                xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
 #else
+                xrdp_egfx_send_frame_start(self->egfx,
+                                           enc_done->enc->frame_id, 0);
+
                 xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
                     XR_RDPGFX_CODECID_AVC420,
                     XR_PIXEL_FORMAT_XRGB_8888,
                     &rect,
                     enc_done->comp_pad_data1 + enc_done->pad_bytes1,
                     enc_done->comp_bytes1);
-#endif
+
                 xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
+#endif
+                
             }
             else if (enc_done->flags & 2) /* gfx progressive rfx */
             {
@@ -3402,6 +3420,7 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
             g_free(enc_done->enc);
         }
         g_free(enc_done->comp_pad_data1);
+        g_free(enc_done->comp_pad_data2);
         g_free(enc_done);
     }
     return 0;

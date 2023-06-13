@@ -638,16 +638,10 @@ build_rfx_avc420_metablock(struct stream *s, short *rrects, int rcount, int widt
     return comp_bytes_pre;
 }
 
-/*****************************************************************************/
-/* called from encoder thread */
-static int
-process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
+static XRDP_ENC_DATA_DONE *
+build_enc_h264_avc444_yuv420_and_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 {
     int index;
-    int x;
-    int y;
-    int cx;
-    int cy;
     int out_data_bytes;
 #if AVC444
     int out_data_bytes1;
@@ -657,9 +651,6 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
     int error;
     char *out_data;
     XRDP_ENC_DATA_DONE *enc_done;
-    FIFO *fifo_processed;
-    tbus mutex;
-    tbus event_processed;
     struct stream ls;
     struct stream *s;
     int comp_bytes_pre;
@@ -676,10 +667,6 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 
     scr_width = self->mm->wm->screen->width;
     scr_height = self->mm->wm->screen->height;
-
-    fifo_processed = self->fifo_processed;
-    mutex = self->mutex;
-    event_processed = self->xrdp_encoder_event_processed;
 
     rcount = enc->num_drects;
     rrects = enc->drects;
@@ -729,14 +716,10 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
         out_uint16_le(s, rcount);
         for (index = 0; index < rcount; index++)
         {
-            x = rrects[index * 4 + 0];
-            y = rrects[index * 4 + 1];
-            cx = rrects[index * 4 + 2];
-            cy = rrects[index * 4 + 3];
-            out_uint16_le(s, x);
-            out_uint16_le(s, y);
-            out_uint16_le(s, cx);
-            out_uint16_le(s, cy);
+            out_uint16_le(s, rrects[index * 4 + 0]);
+            out_uint16_le(s, rrects[index * 4 + 1]);
+            out_uint16_le(s, rrects[index * 4 + 2]);
+            out_uint16_le(s, rrects[index * 4 + 3]);
         }
         s_push_layer(s, iso_hdr, 4);
         comp_bytes_pre = 4 + 4 + 2 + 2 + 2 + 2 + 2 + rcount * 8 + 4;
@@ -863,6 +846,296 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
               comp_bytes_pre, out_data_bytes, comp_bytes_pre1, out_data_bytes1);
     g_hexdump(enc_done->comp_pad_data + enc_done->pad_bytes, enc_done->comp_bytes);
 #endif
+    return enc_done;
+}
+
+static XRDP_ENC_DATA_DONE *
+build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
+{
+    if (!self->gfx)
+    {
+        return 0;
+    }
+
+    int index;
+    int out_data_bytes;
+    int rcount;
+    short *rrects;
+    int error;
+    char *out_data;
+    XRDP_ENC_DATA_DONE *enc_done;
+    struct stream ls;
+    struct stream *s;
+    int comp_bytes_pre;
+    int enc_done_flags;
+    int scr_width, scr_height;
+
+    LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_stream:");
+    LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_stream: num_crects %d num_drects %d",
+        enc->num_crects, enc->num_drects);
+
+    scr_width = self->mm->wm->screen->width;
+    scr_height = self->mm->wm->screen->height;
+
+    rcount = enc->num_drects;
+    rrects = enc->drects;
+    if (rcount > 15)
+    {
+        rcount = enc->num_crects;
+        rrects = enc->crects;
+    }
+
+    out_data_bytes = 128 * 1024 * 1024;
+    index = 256 + 16 + 2 + enc->num_drects * 8;
+    out_data = g_new(char, out_data_bytes + index);
+    if (out_data == NULL)
+    {
+        return 0;
+    }
+
+    s = &ls;
+    g_memset(s, 0, sizeof(struct stream));
+    ls.data = out_data + 256;
+    ls.p = ls.data;
+
+    /* size of avc420EncodedBitmapstream1 */
+    s_push_layer(s, mcs_hdr, 4);
+    /* RFX_AVC420_METABLOCK */
+    comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount, scr_width, scr_height);
+    enc_done_flags = 1;
+    
+    error = 0;
+    if (enc->flags & 1)
+    {
+        /* already compressed */
+        uint8_t *ud = (uint8_t *) (enc->data);
+        int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
+        if ((cbytes < 1) || (cbytes > out_data_bytes))
+        {
+            LOG(LOG_LEVEL_INFO, "process_enc_h264: bad h264 bytes %d", cbytes);
+            g_free(out_data);
+            return 0;
+        }
+        LOG(LOG_LEVEL_DEBUG,
+            "process_enc_h264: already compressed and size is %d", cbytes);
+        out_data_bytes = cbytes;
+        g_memcpy(s->p, enc->data + 4, out_data_bytes);
+    }
+    else
+    {
+#if defined(XRDP_X264)
+        error = xrdp_encoder_x264_encode(self->codec_handle, 0,
+                                         enc->width, enc->height, 0,
+                                         enc->data,
+                                         s->p, &out_data_bytes);
+#elif defined(XRDP_OPENH264)
+        error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
+                                             enc->width, enc->height, 0,
+                                             enc->data,
+                                             s->p, &out_data_bytes);
+#endif
+    }
+    LOG_DEVEL(LOG_LEVEL_TRACE,
+              "process_enc_h264: xrdp_encoder_x264_encode rv %d "
+              "out_data_bytes %d width %d height %d",
+              error, out_data_bytes, enc->width, enc->height);
+    if (error != 0)
+    {
+        LOG_DEVEL(LOG_LEVEL_TRACE,
+                  "process_enc_h264: xrdp_encoder_x264_encode failed rv %d",
+                  error);
+        g_free(out_data);
+        return 0;
+    }
+
+    s->p += out_data_bytes;
+
+    s_push_layer(s, sec_hdr, 0);
+    s_pop_layer(s, mcs_hdr);
+    // TODO: Specify LC code here
+    uint8_t LC = 0x1;
+    uint32_t bitstream1 = comp_bytes_pre + out_data_bytes;
+    bitstream1 |= (LC << 30UL);
+//  uint32_t bitstream1 =
+//     ((comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
+    out_uint32_le(s, bitstream1);
+    s_pop_layer(s, sec_hdr);
+
+    s->end = s->p;
+
+    if (s->iso_hdr != NULL)
+    {
+        /* not used in gfx */
+        s_pop_layer(s, iso_hdr);
+        out_uint32_le(s, out_data_bytes);
+    }
+
+    enc_done = g_new0(XRDP_ENC_DATA_DONE, 1);
+    if (enc_done == NULL)
+    {
+        return 0;
+    }
+    enc_done->comp_bytes1 = 4 + comp_bytes_pre + out_data_bytes;
+    enc_done->pad_bytes1 = 256;
+    enc_done->comp_pad_data1 = out_data;
+    enc_done->enc = enc;
+    enc_done->last = 1;
+    enc_done->cx = scr_width;
+    enc_done->cy = scr_height;
+    enc_done->flags = enc_done_flags;
+
+    return enc_done;
+}
+
+static XRDP_ENC_DATA_DONE *
+build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc, XRDP_ENC_DATA_DONE *enc_done)
+{
+    if (!self->gfx)
+    {
+        return 0;
+    }
+
+    int index;
+    int out_data_bytes;
+    int rcount;
+    short *rrects;
+    int error;
+    char *out_data;
+    struct stream ls;
+    struct stream *s;
+    int comp_bytes_pre;
+    int scr_width, scr_height;
+
+    LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_chroma420_stream:");
+    LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_chroma420_stream: num_crects %d num_drects %d",
+        enc->num_crects, enc->num_drects);
+
+    scr_width = self->mm->wm->screen->width;
+    scr_height = self->mm->wm->screen->height;
+
+    rcount = enc->num_drects;
+    rrects = enc->drects;
+    if (rcount > 15)
+    {
+        rcount = enc->num_crects;
+        rrects = enc->crects;
+    }
+
+    out_data_bytes = 128 * 1024 * 1024;
+    index = 256 + 16 + 2 + enc->num_drects * 8;
+    out_data = g_new(char, out_data_bytes + index);
+    if (out_data == NULL)
+    {
+        return 0;
+    }
+
+    s = &ls;
+    g_memset(s, 0, sizeof(struct stream));
+    ls.data = out_data + 256;
+    ls.p = ls.data;
+
+    /* size of avc420EncodedBitmapstream1 */
+    s_push_layer(s, mcs_hdr, 4);
+    /* RFX_AVC420_METABLOCK */
+    comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount, scr_width, scr_height);
+    error = 0;
+    if (enc->flags & 1)
+    {
+        /* already compressed */
+        uint8_t *ud = (uint8_t *) (enc->data);
+        int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
+        if ((cbytes < 1) || (cbytes > out_data_bytes))
+        {
+            LOG(LOG_LEVEL_INFO, "process_enc_h264: bad h264 bytes %d", cbytes);
+            g_free(out_data);
+            return 0;
+        }
+        LOG(LOG_LEVEL_DEBUG,
+            "process_enc_h264: already compressed and size is %d", cbytes);
+        out_data_bytes = cbytes;
+        g_memcpy(s->p, enc->data + 4, out_data_bytes);
+    }
+    else
+    {
+#if defined(XRDP_X264)
+        error = xrdp_encoder_x264_encode(self->codec_handle, 0,
+                                         enc->width, enc->height, 0,
+                                         enc->data + (enc->height * enc->width) * 3 / 2,
+                                         s->p, &out_data_bytes);
+#elif defined(XRDP_OPENH264)
+        error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
+                                             enc->width, enc->height, 0,
+                                             enc->data + (enc->height * enc->width) * 3 / 2,
+                                             s->p, &out_data_bytes);
+#endif
+    }
+    LOG_DEVEL(LOG_LEVEL_TRACE,
+              "process_enc_h264: xrdp_encoder_x264_encode rv %d "
+              "out_data_bytes %d width %d height %d",
+              error, out_data_bytes, enc->width, enc->height);
+    if (error != 0)
+    {
+        LOG_DEVEL(LOG_LEVEL_TRACE,
+                  "process_enc_h264: xrdp_encoder_x264_encode failed rv %d",
+                  error);
+        g_free(out_data);
+        return 0;
+    }
+
+    s->p += out_data_bytes;
+
+    s_push_layer(s, sec_hdr, 0);
+    s_pop_layer(s, mcs_hdr);
+    // TODO: Specify LC code here
+    uint8_t LC = 0x2;
+    uint32_t bitstream1 = comp_bytes_pre + out_data_bytes;
+    bitstream1 |= (LC << 30UL);
+
+    // uint32_t bitstream1 =
+    //     ((comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
+    out_uint32_le(s, bitstream1);
+    s_pop_layer(s, sec_hdr);
+
+    s->end = s->p;
+
+    if (s->iso_hdr != NULL)
+    {
+        /* not used in gfx */
+        s_pop_layer(s, iso_hdr);
+        out_uint32_le(s, out_data_bytes);
+    }
+
+    enc_done->comp_bytes2 = 4 + comp_bytes_pre + out_data_bytes;
+    enc_done->pad_bytes2 = 256;
+    enc_done->comp_pad_data2 = out_data;
+
+    return enc_done;
+}
+
+/*****************************************************************************/
+/* called from encoder thread */
+static int
+process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
+{
+    FIFO *fifo_processed;
+    tbus mutex;
+    tbus event_processed;
+
+    fifo_processed = self->fifo_processed;
+    mutex = self->mutex;
+    event_processed = self->xrdp_encoder_event_processed;
+
+    XRDP_ENC_DATA_DONE *enc_done;
+    int mode = 1;
+    switch (mode) {
+        case 0:
+            enc_done = build_enc_h264_avc444_yuv420_and_chroma420_stream(self, enc);
+            break;
+        case 1:
+            enc_done = build_enc_h264_avc444_yuv420_stream(self, enc);
+            enc_done = build_enc_h264_avc444_chroma420_stream(self, enc, enc_done);
+            break;
+    }
 
     /* done with msg */
     /* inform main thread done */
@@ -875,12 +1148,108 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
     return 0;
 }
 
+#else
 
-// static int
-// build_enc_h264_avc420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
-// {
+/*****************************************************************************/
+/* called from encoder thread */
+static int
+process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
+{
+    LOG_DEVEL(LOG_LEVEL_INFO, "process_enc_h264: dummy func");
+    return 0;
+}
 
-// }
+#endif
+
+/**
+ * Encoder thread main loop
+ *****************************************************************************/
+THREAD_RV THREAD_CC
+proc_enc_msg(void *arg)
+{
+    XRDP_ENC_DATA *enc;
+    FIFO *fifo_to_proc;
+    tbus mutex;
+    tbus event_to_proc;
+    tbus term_obj;
+    tbus lterm_obj;
+    int robjs_count;
+    int wobjs_count;
+    int cont;
+    int timeout;
+    tbus robjs[32];
+    tbus wobjs[32];
+    struct xrdp_encoder *self;
+
+    LOG_DEVEL(LOG_LEVEL_INFO, "proc_enc_msg: thread is running");
+
+    self = (struct xrdp_encoder *) arg;
+    if (self == NULL)
+    {
+        LOG_DEVEL(LOG_LEVEL_DEBUG, "proc_enc_msg: self nil");
+        return 0;
+    }
+
+    fifo_to_proc = self->fifo_to_proc;
+    mutex = self->mutex;
+    event_to_proc = self->xrdp_encoder_event_to_proc;
+
+    term_obj = g_get_term();
+    lterm_obj = self->xrdp_encoder_term;
+
+    cont = 1;
+    while (cont)
+    {
+        timeout = -1;
+        robjs_count = 0;
+        wobjs_count = 0;
+        robjs[robjs_count++] = term_obj;
+        robjs[robjs_count++] = lterm_obj;
+        robjs[robjs_count++] = event_to_proc;
+
+        if (g_obj_wait(robjs, robjs_count, wobjs, wobjs_count, timeout) != 0)
+        {
+            /* error, should not get here */
+            g_sleep(100);
+        }
+
+        if (g_is_wait_obj_set(term_obj)) /* global term */
+        {
+            LOG(LOG_LEVEL_DEBUG,
+                "Received termination signal, stopping the encoder thread");
+            break;
+        }
+
+        if (g_is_wait_obj_set(lterm_obj)) /* xrdp_mm term */
+        {
+            LOG(LOG_LEVEL_INFO, "proc_enc_msg: xrdp_mm term");
+            break;
+        }
+
+        if (g_is_wait_obj_set(event_to_proc))
+        {
+            /* clear it right away */
+            g_reset_wait_obj(event_to_proc);
+            /* get first msg */
+            tc_mutex_lock(mutex);
+            enc = (XRDP_ENC_DATA *) fifo_remove_item(fifo_to_proc);
+            tc_mutex_unlock(mutex);
+            while (enc != 0)
+            {
+                /* do work */
+                self->process_enc(self, enc);
+                /* get next msg */
+                tc_mutex_lock(mutex);
+                enc = (XRDP_ENC_DATA *) fifo_remove_item(fifo_to_proc);
+                tc_mutex_unlock(mutex);
+            }
+        }
+
+    } /* end while (cont) */
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "proc_enc_msg: thread exit");
+    return 0;
+}
+
 
 // #if AVC444
 
@@ -1073,364 +1442,6 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 //         + out_data_bytes
 //         + comp_bytes_pre1
 //         + out_data_bytes1;
-
-//     enc_done->pad_bytes = 256;
-//     enc_done->comp_pad_data = out_data;
-//     enc_done->enc = enc;
-//     enc_done->last = 1;
-//     enc_done->cx = scr_width;
-//     enc_done->cy = scr_height;
-//     enc_done->flags = enc_done_flags;
-
-//     /* done with msg */
-//     /* inform main thread done */
-//     tc_mutex_lock(mutex);
-//     fifo_add_item(fifo_processed, enc_done);
-//     tc_mutex_unlock(mutex);
-//     /* signal completion for main thread */
-//     g_set_wait_obj(event_processed);
-
-//     return 0;
-// }
-
-// static int
-// build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
-// {
-//     int index;
-//     int x, y, cx, cy;
-//     int out_data_bytes;
-//     int rcount;
-//     short *rrects;
-//     int error;
-//     char *out_data;
-//     XRDP_ENC_DATA_DONE *enc_done;
-//     FIFO *fifo_processed;
-//     tbus mutex;
-//     tbus event_processed;
-//     struct stream ls;
-//     struct stream *s;
-//     int comp_bytes_pre;
-//     int enc_done_flags;
-//     struct enc_rect rect;
-//     int scr_width, scr_height;
-
-//     LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_and_chroma420_stream:");
-//     LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_and_chroma420_stream: num_crects %d num_drects %d",
-//         enc->num_crects, enc->num_drects);
-
-//     scr_width = self->mm->wm->screen->width;
-//     scr_height = self->mm->wm->screen->height;
-
-//     fifo_processed = self->fifo_processed;
-//     mutex = self->mutex;
-//     event_processed = self->xrdp_encoder_event_processed;
-
-//     rcount = enc->num_drects;
-//     rrects = enc->drects;
-//     if (rcount > 15)
-//     {
-//         rcount = enc->num_crects;
-//         rrects = enc->crects;
-//     }
-
-//     out_data_bytes = 128 * 1024 * 1024;
-//     index = 256 + 16 + 2 + enc->num_drects * 8;
-//     out_data = g_new(char, out_data_bytes + index);
-//     if (out_data == NULL)
-//     {
-//         return 0;
-//     }
-
-//     s = &ls;
-//     g_memset(s, 0, sizeof(struct stream));
-//     ls.data = out_data + 256;
-//     ls.p = ls.data;
-
-//     if (self->gfx)
-//     {
-//         /* size of avc420EncodedBitmapstream1 */
-//         s_push_layer(s, mcs_hdr, 4);
-//         /* RFX_AVC420_METABLOCK */
-//         comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount, scr_width, scr_height);
-//         enc_done_flags = 1;
-//     }
-//     else
-//     {
-//         out_uint32_le(s, 0); /* flags */
-//         out_uint32_le(s, 0); /* session id */
-//         out_uint16_le(s, enc->width); /* src_width */
-//         out_uint16_le(s, enc->height); /* src_height */
-//         out_uint16_le(s, enc->width); /* dst_width */
-//         out_uint16_le(s, enc->height); /* dst_height */
-//         out_uint16_le(s, rcount);
-//         for (index = 0; index < rcount; index++)
-//         {
-//             x = rrects[index * 4 + 0];
-//             y = rrects[index * 4 + 1];
-//             cx = rrects[index * 4 + 2];
-//             cy = rrects[index * 4 + 3];
-//             out_uint16_le(s, x);
-//             out_uint16_le(s, y);
-//             out_uint16_le(s, cx);
-//             out_uint16_le(s, cy);
-//         }
-//         s_push_layer(s, iso_hdr, 4);
-//         comp_bytes_pre = 4 + 4 + 2 + 2 + 2 + 2 + 2 + rcount * 8 + 4;
-//         enc_done_flags = 0;
-//     }
-//     error = 0;
-//     if (enc->flags & 1)
-//     {
-//         /* already compressed */
-//         uint8_t *ud = (uint8_t *) (enc->data);
-//         int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
-//         if ((cbytes < 1) || (cbytes > out_data_bytes))
-//         {
-//             LOG(LOG_LEVEL_INFO, "process_enc_h264: bad h264 bytes %d", cbytes);
-//             g_free(out_data);
-//             return 0;
-//         }
-//         LOG(LOG_LEVEL_DEBUG,
-//             "process_enc_h264: already compressed and size is %d", cbytes);
-//         out_data_bytes = cbytes;
-//         g_memcpy(s->p, enc->data + 4, out_data_bytes);
-//     }
-//     else
-//     {
-// #if defined(XRDP_X264)
-//         error = xrdp_encoder_x264_encode(self->codec_handle, 0,
-//                                          enc->width, enc->height, 0,
-//                                          enc->data,
-//                                          s->p, &out_data_bytes);
-// #elif defined(XRDP_OPENH264)
-//         error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
-//                                              enc->width, enc->height, 0,
-//                                              enc->data,
-//                                              s->p, &out_data_bytes);
-// #endif
-//     }
-//     LOG_DEVEL(LOG_LEVEL_TRACE,
-//               "process_enc_h264: xrdp_encoder_x264_encode rv %d "
-//               "out_data_bytes %d width %d height %d",
-//               error, out_data_bytes, enc->width, enc->height);
-//     if (error != 0)
-//     {
-//         LOG_DEVEL(LOG_LEVEL_TRACE,
-//                   "process_enc_h264: xrdp_encoder_x264_encode failed rv %d",
-//                   error);
-//         g_free(out_data);
-//         return 0;
-//     }
-
-//     s->p += out_data_bytes;
-
-//     s_push_layer(s, sec_hdr, 0);
-//     s_pop_layer(s, mcs_hdr);
-//     // TODO: Specify LC code here
-//     uint8_t LC = 0x1;
-//     uint32_t bitstream1 =
-//         ((comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
-//     out_uint32_le(s, bitstream1);
-//     s_pop_layer(s, sec_hdr);
-
-//     s->end = s->p;
-
-//     if (s->iso_hdr != NULL)
-//     {
-//         /* not used in gfx */
-//         s_pop_layer(s, iso_hdr);
-//         out_uint32_le(s, out_data_bytes);
-//     }
-
-// #if SAVE_VIDEO
-//     n_save_data(s->p, out_data_bytes, enc->width, enc->height);
-// #endif
-
-//     enc_done = g_new0(XRDP_ENC_DATA_DONE, 1);
-//     if (enc_done == NULL)
-//     {
-//         return 0;
-//     }
-//     enc_done->comp_bytes = 4 + comp_bytes_pre + out_data_bytes;
-
-//     enc_done->pad_bytes = 256;
-//     enc_done->comp_pad_data = out_data;
-//     enc_done->enc = enc;
-//     enc_done->last = 1;
-//     enc_done->cx = scr_width;
-//     enc_done->cy = scr_height;
-//     enc_done->flags = enc_done_flags;
-
-//     /* done with msg */
-//     /* inform main thread done */
-//     tc_mutex_lock(mutex);
-//     fifo_add_item(fifo_processed, enc_done);
-//     tc_mutex_unlock(mutex);
-//     /* signal completion for main thread */
-//     g_set_wait_obj(event_processed);
-
-//     return 0;
-// }
-
-// static int
-// build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
-// {
-//     int index;
-//     int x, y, cx, cy;
-//     int out_data_bytes;
-//     int rcount;
-//     short *rrects;
-//     int error;
-//     char *out_data;
-//     XRDP_ENC_DATA_DONE *enc_done;
-//     FIFO *fifo_processed;
-//     tbus mutex;
-//     tbus event_processed;
-//     struct stream ls;
-//     struct stream *s;
-//     int comp_bytes_pre;
-//     int enc_done_flags;
-//     struct enc_rect rect;
-//     int scr_width, scr_height;
-
-//     LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_and_chroma420_stream:");
-//     LOG(LOG_LEVEL_DEBUG, "build_enc_h264_avc444_yuv420_and_chroma420_stream: num_crects %d num_drects %d",
-//         enc->num_crects, enc->num_drects);
-
-//     scr_width = self->mm->wm->screen->width;
-//     scr_height = self->mm->wm->screen->height;
-
-//     fifo_processed = self->fifo_processed;
-//     mutex = self->mutex;
-//     event_processed = self->xrdp_encoder_event_processed;
-
-//     rcount = enc->num_drects;
-//     rrects = enc->drects;
-//     if (rcount > 15)
-//     {
-//         rcount = enc->num_crects;
-//         rrects = enc->crects;
-//     }
-
-//     out_data_bytes = 128 * 1024 * 1024;
-//     index = 256 + 16 + 2 + enc->num_drects * 8;
-//     out_data = g_new(char, out_data_bytes + index);
-//     if (out_data == NULL)
-//     {
-//         return 0;
-//     }
-
-//     s = &ls;
-//     g_memset(s, 0, sizeof(struct stream));
-//     ls.data = out_data + 256;
-//     ls.p = ls.data;
-
-//     if (self->gfx)
-//     {
-//         /* size of avc420EncodedBitmapstream1 */
-//         s_push_layer(s, mcs_hdr, 4);
-//         /* RFX_AVC420_METABLOCK */
-//         comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount, scr_width, scr_height);
-//         enc_done_flags = 1;
-//     }
-//     else
-//     {
-//         out_uint32_le(s, 0); /* flags */
-//         out_uint32_le(s, 0); /* session id */
-//         out_uint16_le(s, enc->width); /* src_width */
-//         out_uint16_le(s, enc->height); /* src_height */
-//         out_uint16_le(s, enc->width); /* dst_width */
-//         out_uint16_le(s, enc->height); /* dst_height */
-//         out_uint16_le(s, rcount);
-//         for (index = 0; index < rcount; index++)
-//         {
-//             x = rrects[index * 4 + 0];
-//             y = rrects[index * 4 + 1];
-//             cx = rrects[index * 4 + 2];
-//             cy = rrects[index * 4 + 3];
-//             out_uint16_le(s, x);
-//             out_uint16_le(s, y);
-//             out_uint16_le(s, cx);
-//             out_uint16_le(s, cy);
-//         }
-//         s_push_layer(s, iso_hdr, 4);
-//         comp_bytes_pre = 4 + 4 + 2 + 2 + 2 + 2 + 2 + rcount * 8 + 4;
-//         enc_done_flags = 0;
-//     }
-//     error = 0;
-//     if (enc->flags & 1)
-//     {
-//         /* already compressed */
-//         uint8_t *ud = (uint8_t *) (enc->data);
-//         int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
-//         if ((cbytes < 1) || (cbytes > out_data_bytes))
-//         {
-//             LOG(LOG_LEVEL_INFO, "process_enc_h264: bad h264 bytes %d", cbytes);
-//             g_free(out_data);
-//             return 0;
-//         }
-//         LOG(LOG_LEVEL_DEBUG,
-//             "process_enc_h264: already compressed and size is %d", cbytes);
-//         out_data_bytes = cbytes;
-//         g_memcpy(s->p, enc->data + 4, out_data_bytes);
-//     }
-//     else
-//     {
-// #if defined(XRDP_X264)
-//         error = xrdp_encoder_x264_encode(self->codec_handle, 0,
-//                                          enc->width, enc->height, 0,
-//                                          enc->data,
-//                                          s->p, &out_data_bytes);
-// #elif defined(XRDP_OPENH264)
-//         error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
-//                                              enc->width, enc->height, 0,
-//                                              enc->data,
-//                                              s->p, &out_data_bytes);
-// #endif
-//     }
-//     LOG_DEVEL(LOG_LEVEL_TRACE,
-//               "process_enc_h264: xrdp_encoder_x264_encode rv %d "
-//               "out_data_bytes %d width %d height %d",
-//               error, out_data_bytes, enc->width, enc->height);
-//     if (error != 0)
-//     {
-//         LOG_DEVEL(LOG_LEVEL_TRACE,
-//                   "process_enc_h264: xrdp_encoder_x264_encode failed rv %d",
-//                   error);
-//         g_free(out_data);
-//         return 0;
-//     }
-
-//     s->p += out_data_bytes;
-
-//     s_push_layer(s, sec_hdr, 0);
-//     s_pop_layer(s, mcs_hdr);
-//     // TODO: Specify LC code here
-//     uint8_t LC = 0x2;
-//     uint32_t bitstream1 =
-//         ((comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
-//     out_uint32_le(s, bitstream1);
-//     s_pop_layer(s, sec_hdr);
-
-//     s->end = s->p;
-
-//     if (s->iso_hdr != NULL)
-//     {
-//         /* not used in gfx */
-//         s_pop_layer(s, iso_hdr);
-//         out_uint32_le(s, out_data_bytes);
-//     }
-
-// #if SAVE_VIDEO
-//     n_save_data(s->p, out_data_bytes, enc->width, enc->height);
-// #endif
-
-//     enc_done = g_new0(XRDP_ENC_DATA_DONE, 1);
-//     if (enc_done == NULL)
-//     {
-//         return 0;
-//     }
-//     enc_done->comp_bytes = 4 + comp_bytes_pre + out_data_bytes;
 
 //     enc_done->pad_bytes = 256;
 //     enc_done->comp_pad_data = out_data;
@@ -2243,105 +2254,3 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 
 //     return 0;
 // }
-
-#else
-
-/*****************************************************************************/
-/* called from encoder thread */
-static int
-process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
-{
-    LOG_DEVEL(LOG_LEVEL_INFO, "process_enc_h264: dummy func");
-    return 0;
-}
-
-#endif
-
-/**
- * Encoder thread main loop
- *****************************************************************************/
-THREAD_RV THREAD_CC
-proc_enc_msg(void *arg)
-{
-    XRDP_ENC_DATA *enc;
-    FIFO *fifo_to_proc;
-    tbus mutex;
-    tbus event_to_proc;
-    tbus term_obj;
-    tbus lterm_obj;
-    int robjs_count;
-    int wobjs_count;
-    int cont;
-    int timeout;
-    tbus robjs[32];
-    tbus wobjs[32];
-    struct xrdp_encoder *self;
-
-    LOG_DEVEL(LOG_LEVEL_INFO, "proc_enc_msg: thread is running");
-
-    self = (struct xrdp_encoder *) arg;
-    if (self == NULL)
-    {
-        LOG_DEVEL(LOG_LEVEL_DEBUG, "proc_enc_msg: self nil");
-        return 0;
-    }
-
-    fifo_to_proc = self->fifo_to_proc;
-    mutex = self->mutex;
-    event_to_proc = self->xrdp_encoder_event_to_proc;
-
-    term_obj = g_get_term();
-    lterm_obj = self->xrdp_encoder_term;
-
-    cont = 1;
-    while (cont)
-    {
-        timeout = -1;
-        robjs_count = 0;
-        wobjs_count = 0;
-        robjs[robjs_count++] = term_obj;
-        robjs[robjs_count++] = lterm_obj;
-        robjs[robjs_count++] = event_to_proc;
-
-        if (g_obj_wait(robjs, robjs_count, wobjs, wobjs_count, timeout) != 0)
-        {
-            /* error, should not get here */
-            g_sleep(100);
-        }
-
-        if (g_is_wait_obj_set(term_obj)) /* global term */
-        {
-            LOG(LOG_LEVEL_DEBUG,
-                "Received termination signal, stopping the encoder thread");
-            break;
-        }
-
-        if (g_is_wait_obj_set(lterm_obj)) /* xrdp_mm term */
-        {
-            LOG(LOG_LEVEL_INFO, "proc_enc_msg: xrdp_mm term");
-            break;
-        }
-
-        if (g_is_wait_obj_set(event_to_proc))
-        {
-            /* clear it right away */
-            g_reset_wait_obj(event_to_proc);
-            /* get first msg */
-            tc_mutex_lock(mutex);
-            enc = (XRDP_ENC_DATA *) fifo_remove_item(fifo_to_proc);
-            tc_mutex_unlock(mutex);
-            while (enc != 0)
-            {
-                /* do work */
-                self->process_enc(self, enc);
-                /* get next msg */
-                tc_mutex_lock(mutex);
-                enc = (XRDP_ENC_DATA *) fifo_remove_item(fifo_to_proc);
-                tc_mutex_unlock(mutex);
-            }
-        }
-
-    } /* end while (cont) */
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "proc_enc_msg: thread exit");
-    return 0;
-}
