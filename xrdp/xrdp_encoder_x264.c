@@ -125,15 +125,20 @@ xrdp_encoder_x264_encode(void *handle, int session,
         {
             //x264_param_default_preset(&(xe->x264_params), "superfast", "zerolatency");
             //x264_param_default_preset(&(xe->x264_params), "ultrafast", "zerolatency");
-            x264_param_default_preset(&(xe->x264_params), "ultrafast", "zerolatency");
+            x264_param_default_preset(&(xe->x264_params), "veryfast", "zerolatency");
 
             xe->x264_params.i_width = width;
             xe->x264_params.i_height = height;
             xe->x264_params.i_threads = 1;
             xe->x264_params.i_fps_num = 24;
             xe->x264_params.i_fps_den = 1;
-            xe->x264_params.rc.i_rc_method = X264_RC_CQP;
-            xe->x264_params.rc.i_qp_constant = 23;
+            //xe->x264_params.i_sps_id = 1;
+            //xe->x264_params.rc.i_rc_method = X264_RC_CQP;
+            //xe->x264_params.rc.i_rc_method = X264_RC_CRF;
+            //xe->x264_params.rc.f_rf_constant = 18;
+            //xe->x264_params.rc.i_bitrate = 1000000 * 2;
+
+            //xe->x264_params.rc.i_qp_constant = 23;
 
             //xe->x264_params.i_slice_max_size = 0;
             //xe->x264_params.b_vfr_input = 0;
@@ -157,13 +162,13 @@ xrdp_encoder_x264_encode(void *handle, int session,
             //xe->x264_params.b_stitchable = 0;
             //xe->x264_params.rc.b_mb_tree = 1;
             //xe->x264_params.b_annexb = 0;
-            x264_param_apply_profile(&(xe->x264_params), "baseline");
+            x264_param_apply_profile(&(xe->x264_params), "high");
             //xe->x264_params.i_slice_count = 1;
-            xe->x264_params.i_nal_hrd = 0;
-            xe->x264_params.b_repeat_headers = 1;
-            xe->x264_params.b_aud = 0;
-            xe->x264_params.b_pic_struct = 1;
-            xe->x264_params.i_bframe = 0;
+            // xe->x264_params.i_nal_hrd = 0;
+            // xe->x264_params.b_repeat_headers = 1;
+            // xe->x264_params.b_aud = 0;
+            // xe->x264_params.b_pic_struct = 1;
+            // xe->x264_params.i_bframe = 0;
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
             if (xe->x264_enc_han == 0)
             {
@@ -218,7 +223,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
         pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
         pic_in.img.i_stride[2] = pic_in.img.i_stride[1];
 
-        pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
+        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
 
         //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
         // Copy input image to x264 picture structure
@@ -247,13 +252,13 @@ xrdp_encoder_x264_encode(void *handle, int session,
         {
             return 4;
         }
-        int total_size = 0;
+        *cdata_bytes = 0;
         for (int i = 0; i < num_nals; ++i)
         {
             x264_nal_t *nal = nals + i;
             int size = nal->i_payload;
             uint8_t* payload = nal->p_payload;
-            char* write_location = cdata + total_size;
+            char* write_location = cdata + *cdata_bytes;
             int nalUnitType = nal->i_type;
 
             LOG(LOG_LEVEL_INFO, "NalType is %d. Format is %d", nalUnitType, format);
@@ -264,7 +269,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
                 case NAL_PPS:
                 case NAL_SLICE:
                 case NAL_SLICE_IDR:
-                    total_size += size;
+                    *cdata_bytes += size;
                     if (nal->b_long_startcode)
                     {
                         g_memcpy(write_location, payload, size);
@@ -273,7 +278,7 @@ xrdp_encoder_x264_encode(void *handle, int session,
                     LOG(LOG_LEVEL_INFO, "Expanding start code %d.", nalUnitType);
                     g_memcpy(write_location, "\x00\x00\x00\x01", 4);
                     g_memcpy(write_location + 4, payload + 3, size - 3);
-                    total_size += 1;
+                    *cdata_bytes += 1;
                     break;
                 default:
                     LOG(LOG_LEVEL_INFO, "Skipping NAL of type %d.", nalUnitType);
@@ -281,8 +286,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
             }
             LOG(LOG_LEVEL_INFO, "end frame.");
         }
-        *cdata_bytes = total_size;
-
         //g_memcpy(cdata, nals[0].p_payload, frame_size);
         //*cdata_bytes = frame_size;
     }

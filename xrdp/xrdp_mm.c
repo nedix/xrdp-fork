@@ -1182,6 +1182,7 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
             case XR_RDPGFX_CAPVERSION_104:
             case XR_RDPGFX_CAPVERSION_105:
             case XR_RDPGFX_CAPVERSION_106:
+            case XR_RDPGFX_CAPVERSION_107:
                 if (!(flags & XR_RDPGFX_CAPS_FLAG_AVC_DISABLED))
                 {
                     best_h264_index = index;
@@ -3332,15 +3333,18 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                 xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
 
                 enc_done->enc->frame_id++;
-                xrdp_egfx_send_frame_start(self->egfx,
-                            enc_done->enc->frame_id, 0);
-                xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
-                    XR_RDPGFX_CODECID_AVC444V2,
-                    XR_PIXEL_FORMAT_XRGB_8888,
-                    &rect,
-                    enc_done->comp_pad_data2 + enc_done->pad_bytes2,
-                    enc_done->comp_bytes2);
-                xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
+                if (enc_done->comp_bytes2 > 0) {
+                    xrdp_egfx_send_frame_start(self->egfx,
+                                enc_done->enc->frame_id, 0);
+                    xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,
+                        XR_RDPGFX_CODECID_AVC444V2,
+                        XR_PIXEL_FORMAT_XRGB_8888,
+                        &rect,
+                        enc_done->comp_pad_data2 + enc_done->pad_bytes2,
+                        enc_done->comp_bytes2);
+                    xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
+                }
+                
 #else
                 xrdp_egfx_send_frame_start(self->egfx,
                                            enc_done->enc->frame_id, 0);
