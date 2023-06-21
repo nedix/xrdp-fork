@@ -954,12 +954,11 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
     s_push_layer(s, sec_hdr, 0);
     s_pop_layer(s, mcs_hdr);
     // TODO: Specify LC code here
-    uint8_t LC = 0x01;
-    //uint32_t bitstream1 = (uint32_t)comp_bytes_pre + (uint32_t)out_data_bytes;
-    //bitstream1 |= (LC << 30);
-    uint32_t bitstream1 =
-         ((uint32_t)(comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
-    out_uint32_le(s, bitstream1);
+    const uint8_t LC = 0x01;
+    uint32_t bitstream =
+         ((uint32_t)(comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL)
+         | ((LC & 0x03UL) << 30UL);
+    out_uint32_le(s, bitstream);
     s_pop_layer(s, sec_hdr);
 
     s->end = s->p;
@@ -1087,19 +1086,10 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
 
     s_push_layer(s, sec_hdr, 0);
     s_pop_layer(s, mcs_hdr);
+
     // TODO: Specify LC code here
-    //uint32_t bitstream1 = 0b10000000000000000000000000000000;
-
-    //uint32_t bitstream1 = (uint32_t)comp_bytes_pre + (uint32_t)out_data_bytes;
-    //bitstream1 |= (2 << 30UL);
-    uint8_t LC = 2;
-    //uint32_t bitstream1 =
-    //     ((0) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
-    //uint32_t bitstream1 = 0b10000000000000000000000000000000;
-
-    uint32_t bitstream1 =
-        ((uint32_t)(comp_bytes_pre + out_data_bytes) & 0x3FFFFFFFUL) | ((LC & 0x03UL) << 30UL);
-    out_uint32_le(s, bitstream1);
+    const uint32_t bitstream = 0x80000000;
+    out_uint32_le(s, bitstream);
     s_pop_layer(s, sec_hdr);
 
     s->end = s->p;
