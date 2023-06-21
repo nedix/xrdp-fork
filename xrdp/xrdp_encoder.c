@@ -1088,7 +1088,8 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
     s_pop_layer(s, mcs_hdr);
 
     // TODO: Specify LC code here
-    const uint32_t bitstream = 0x80000000;
+    const uint8_t LC = 0x02;
+    const uint32_t bitstream = ((LC & 0x03UL) << 30UL);
     out_uint32_le(s, bitstream);
     s_pop_layer(s, sec_hdr);
 
