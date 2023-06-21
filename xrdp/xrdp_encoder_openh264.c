@@ -91,29 +91,87 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 		return 0;
 	}
 
-	// *cdata_bytes = info.iFrameSizeInBytes;
-	// g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
-
 	*cdata_bytes = 0;
 	for (i = 0; i < info.iLayerNum; i++) {
 		SLayerBSInfo *layer = info.sLayerInfo + i;
 		int size = 0;
-		char* write_location = cdata + *cdata_bytes;
 		for (j = 0; j < layer->iNalCount; j++) {
-			unsigned char* payload = layer->pBsBuf + layer->pNalLengthInByte[j];
-			size = layer->pNalLengthInByte[j];
-			g_memcpy(&t, payload, 4);
-			t = bswap_32(t);
-			if (t != 0x00000001) {
-				g_memcpy(write_location, "\x00\x00\x00\x01", 4);
-				g_memcpy(write_location + 4, payload + 3, size - 3);
-				size += 1;
-			}
+			size += layer->pNalLengthInByte[j];
 		}
 		LOG(LOG_LEVEL_INFO, "OpenH264 layer: %d, Size: %d", i, size);
 		g_memcpy(cdata + *cdata_bytes, layer->pBsBuf, size);
 		*cdata_bytes += size;
 	}
+	LOG(LOG_LEVEL_INFO, "OpenH264 total size: %d", *cdata_bytes);
+
+	//*cdata_bytes = info.iFrameSizeInBytes;
+	//g_memcpy(cdata, info.sLayerInfo[0].pBsBuf, *cdata_bytes);
+
+	// *cdata_bytes = 0;
+	// uint8_t t;
+	// int layer_position = 0;
+	// for (i = 0; i < info.iLayerNum; ++i)
+	// {
+	// 	LOG(LOG_LEVEL_INFO, "layer num: %d", i);
+	// 	SLayerBSInfo *layer = info.sLayerInfo + i;
+	// 	for (j = 0; j < layer->iNalCount; ++j) 
+	// 	{
+	// 		LOG(LOG_LEVEL_INFO, "nal count: %d", j);
+	// 		char* write_location = cdata + *cdata_bytes;
+	// 		uint8_t* payload = info.sLayerInfo[0].pBsBuf + layer_position;
+	// 		int size = layer->pNalLengthInByte[j];
+	// 		layer_position += size;
+	// 		g_memcpy(&t, payload, 5);
+	// 		t = bswap_32(t);
+	// 		LOG(LOG_LEVEL_INFO, "t: %d, NAL: %d%d%d%d %d", t, payload[0], payload[1], payload[2], payload[3], payload[4]);
+
+	// 		enum ENalUnitType nalUnitType = NAL_UNKNOWN;
+	// 		// 4-byte start code
+	// 		if (payload[3] == 1)
+	// 		{
+	// 			nalUnitType = (enum ENalUnitType)(payload[4] & 0x1F);
+	// 		}
+	// 		// 3-byte start code
+	// 		else if (payload[2] == 1)
+	// 		{
+	// 			nalUnitType = (enum ENalUnitType)(payload[3] & 0x1F);
+	// 		}
+	// 		LOG(LOG_LEVEL_INFO, "NAL Type: %d", nalUnitType);
+
+	// 		switch (nalUnitType)
+	// 		{
+	// 			// case NAL_SPS:
+    //             // case NAL_PPS:
+    //             // case NAL_SLICE:
+    //             // case NAL_SLICE_IDR:
+	// 			default:
+	// 				if (payload[3] == 1)
+	// 				{
+	// 					LOG(LOG_LEVEL_INFO, "Valid NAL");
+	// 					g_memcpy(write_location, payload, size);
+	// 					break;
+	// 				}
+	// 				// 3-byte start code
+	// 				else if (payload[2] == 1)
+	// 				{
+	// 					LOG(LOG_LEVEL_INFO, "Expanding start code %d.", nalUnitType);
+	// 					g_memcpy(write_location, "\x00\x00\x00\x01", 4);
+	// 					g_memcpy(write_location + 4, payload + 3, size - 3);
+	// 					size += 1;
+	// 				}
+	// 				break;
+	// 			// default:
+	// 			// 	LOG(LOG_LEVEL_INFO, "Skipping NAL of type %d.", nalUnitType);
+	// 			// 	continue;
+	// 		}
+	// 		*cdata_bytes += size;
+	// 	}
+	// }
+
+
+	//LOG(LOG_LEVEL_INFO, "OpenH264 layer: %d, Size: %d", i, size);
+	//g_memcpy(cdata + *cdata_bytes, layer->pBsBuf, size);
+	//}
 	LOG(LOG_LEVEL_INFO, "OpenH264 total size: %d", *cdata_bytes);
 
 	return 0;
@@ -220,30 +278,15 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 		goto err;
 	}
 
-	// if (!(h264->pic2.pData[0] = (unsigned char*) g_malloc(ysize, 1))) {
-	// 	goto err;
-	// }
-	// if (!(h264->pic2.pData[1] = (unsigned char*) g_malloc(usize, 1))) {
-	// 	goto err;
-	// }
-	// if (!(h264->pic2.pData[2] = (unsigned char*) g_malloc(vsize, 1))) {
-	// 	goto err;
-	// }
-
 	memset(h264->pic1.pData[0], 0, ysize);
 	memset(h264->pic1.pData[1], 0, usize);
 	memset(h264->pic1.pData[2], 0, vsize);
 
-	// memset(h264->pic2.pData[0], 0, ysize);
-	// memset(h264->pic2.pData[1], 0, usize);
-	// memset(h264->pic2.pData[2], 0, vsize);
-
-	//if ((create_openh264_encoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
 	if ((WelsCreateSVCEncoder(&h264->pEncoder) != 0) || !h264->pEncoder) {
 		LOG(LOG_LEVEL_ERROR, "Failed to create H.264 encoder");
 		goto err;
 	}
-
+	
 	g_memset(&encParamExt, 0, sizeof(encParamExt));
 	if ((*h264->pEncoder)->GetDefaultParams(h264->pEncoder, &encParamExt)) {
 		LOG(LOG_LEVEL_ERROR, "Failed to retrieve H.264 default ext params");
@@ -259,6 +302,7 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 	encParamExt.iMaxBitrate = UNSPECIFIED_BIT_RATE;
 	encParamExt.bEnableDenoise = 0;
 	encParamExt.bEnableLongTermReference = 0;
+	encParamExt.eSpsPpsIdStrategy = CONSTANT_ID;
 	encParamExt.bEnableFrameSkip = 0;
 	encParamExt.iSpatialLayerNum = 1;
 	encParamExt.sSpatialLayers[0].fFrameRate = encParamExt.fMaxFrameRate;
@@ -302,7 +346,6 @@ void *xrdp_encoder_openh264_open(struct openh264_context *h264, uint32_t scrWidt
 		goto err;
 	}
 	h264->maxBitRate = bitrate.iBitrate;
-	/* WLog_DBG(TAG, "maxBitRate: %"PRIu32"", h264->maxBitRate); */
 
 	return h264;
 
