@@ -260,9 +260,8 @@ xrdp_encoder_x264_encode(void *handle, int session,
             uint8_t* payload = nal->p_payload;
             char* write_location = cdata + *cdata_bytes;
             int nalUnitType = nal->i_type;
-
-            LOG(LOG_LEVEL_INFO, "NalType is %d. Format is %d", nalUnitType, format);
-
+            LOG(LOG_LEVEL_TRACE, "NalType is %d. Format is %d", 
+                nalUnitType, format);
             switch (nalUnitType)
             {
                 case NAL_SPS:
@@ -275,19 +274,16 @@ xrdp_encoder_x264_encode(void *handle, int session,
                         g_memcpy(write_location, payload, size);
                         break;
                     }
-                    LOG(LOG_LEVEL_INFO, "Expanding start code %d.", nalUnitType);
+                    LOG(LOG_LEVEL_DEBUG, "Expanding start code %d.", nalUnitType);
                     g_memcpy(write_location, "\x00\x00\x00\x01", 4);
                     g_memcpy(write_location + 4, payload + 3, size - 3);
                     *cdata_bytes += 1;
                     break;
                 default:
-                    LOG(LOG_LEVEL_INFO, "Skipping NAL of type %d.", nalUnitType);
+                    LOG(LOG_LEVEL_DEBUG, "Skipping NAL of type %d.", nalUnitType);
                     continue;
             }
-            LOG(LOG_LEVEL_INFO, "end frame.");
         }
-        //g_memcpy(cdata, nals[0].p_payload, frame_size);
-        //*cdata_bytes = frame_size;
     }
     return 0;
 }
