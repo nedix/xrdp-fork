@@ -54,6 +54,14 @@ struct xrdp_enc_data
     int frame_id;
 };
 
+struct xrdp_enc_rect
+{
+    short x;
+    short y;
+    short cx;
+    short cy;
+};
+
 typedef struct xrdp_enc_data XRDP_ENC_DATA;
 
 /* used when scheduling tasks from xrdp_encoder.c */
@@ -78,10 +86,7 @@ struct xrdp_enc_data_done
     struct xrdp_enc_data *enc; /* incoming data */
     int last; /* true is this is last message for enc */
     int continuation; /* true if this isn't the start of a frame */
-    int x;
-    int y;
-    int cx;
-    int cy;
+    struct xrdp_enc_rect rect;
     enum xrdp_encoder_flags flags;
 };
 

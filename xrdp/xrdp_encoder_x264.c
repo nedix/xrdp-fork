@@ -191,6 +191,50 @@ xrdp_encoder_x264_encode(void *handle, int session,
         //int full_size = width * height;
         //int quarter_size = full_size / 4;
 
+        // src8 = data;
+        // dst8 = xe->yuvdata;
+        // for (index = 0; index < height; index++)
+        // {
+        //     g_memcpy(dst8, src8, width);
+        //     src8 += width;
+        //     dst8 += xe->x264_params.i_width;
+        // }
+
+        // src8 = data;
+        // src8 += width * height;
+        // dst8 = xe->yuvdata;
+
+        // frame_area = xe->x264_params.i_width * xe->x264_params.i_height;
+        // dst8 += frame_area;
+        // for (index = 0; index < height; index++)
+        // {
+        //     g_memcpy(dst8, src8, width / 2);
+        //     src8 += width / 2;
+        //     dst8 += xe->x264_params.i_width / 2;
+        // }
+
+        // g_memset(&pic_in, 0, sizeof(pic_in));
+        // pic_in.img.i_csp = X264_CSP_I420;
+        // pic_in.img.i_plane = 3;
+        // pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
+        // pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
+        // pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
+        // pic_in.img.i_stride[0] = xe->x264_params.i_width;
+        // pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
+        // pic_in.img.i_stride[2] = pic_in.img.i_stride[1];
+
+        
+
+
+        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
+
+        //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
+        // Copy input image to x264 picture structure
+        //memcpy(pic_in.img.plane[0], data, full_size);
+        //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
+        //memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
+
+
         src8 = data;
         dst8 = xe->yuvdata;
         for (index = 0; index < height; index++)
@@ -204,43 +248,26 @@ xrdp_encoder_x264_encode(void *handle, int session,
         src8 += width * height;
         dst8 = xe->yuvdata;
 
-        frame_area = xe->x264_params.i_width * xe->x264_params.i_height;
+        frame_area = xe->x264_params.i_width * xe->x264_params.i_height - 1;
         dst8 += frame_area;
-        for (index = 0; index < height; index++)
+        for (index = 0; index < height; index += 2)
         {
-            g_memcpy(dst8, src8, width / 2);
-            src8 += width / 2;
-            dst8 += xe->x264_params.i_width / 2;
+            g_memcpy(dst8, src8, width);
+            src8 += width;
+            dst8 += xe->x264_params.i_width;
         }
 
+        pic_in.param = &xe->x264_params;
+
         g_memset(&pic_in, 0, sizeof(pic_in));
-        pic_in.img.i_csp = X264_CSP_I420;
-        pic_in.img.i_plane = 3;
+        pic_in.img.i_csp = X264_CSP_NV12;
+        pic_in.img.i_plane = 2;
         pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
         pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
-        pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
-        pic_in.img.i_stride[0] = xe->x264_params.i_width;
-        pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
-        pic_in.img.i_stride[2] = pic_in.img.i_stride[1];
-
-        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
-
-        //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
-        // Copy input image to x264 picture structure
-        //memcpy(pic_in.img.plane[0], data, full_size);
-        //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
-        //memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
-        pic_in.param = &xe->x264_params;
-        // if (format == 1)
-        // {
-        //     pic_in.i_type = X264_TYPE_KEYFRAME;
-        // }
-        // else
-        // {
-        //     pic_in.i_type = X264_TYPE_I;
-        // }
-
+        pic_in.img.i_stride[0] = width;
+        pic_in.img.i_stride[1] = xe->x264_params.i_width;
         num_nals = 0;
+
         frame_size = x264_encoder_encode(xe->x264_enc_han, &nals, &num_nals,
                                          &pic_in, &pic_out);
 
