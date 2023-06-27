@@ -106,13 +106,11 @@ xrdp_encoder_x264_encode(void *handle, int session,
     x264_picture_t pic_in;
     x264_picture_t pic_out;
 
-    //width = (width + 15) & ~15;    /* codec bitstream width must be a multiple of 16 */
-    //height = (height + 15) & ~15;  /* codec bitstream height must be a multiple of 16 */
-
     LOG(LOG_LEVEL_TRACE, "xrdp_encoder_x264_encode:");
     xg = (struct x264_global *) handle;
     xe = &(xg->encoders[session]);
-    if ((xe->x264_enc_han == 0) || (xe->width != width) || (xe->height != height))
+    if ((xe->x264_enc_han == 0) || (xe->width != width)
+        || (xe->height != height))
     {
         if (xe->x264_enc_han != 0)
         {
@@ -123,52 +121,15 @@ xrdp_encoder_x264_encode(void *handle, int session,
         }
         if ((width > 0) && (height > 0))
         {
-            //x264_param_default_preset(&(xe->x264_params), "superfast", "zerolatency");
-            //x264_param_default_preset(&(xe->x264_params), "ultrafast", "zerolatency");
-            x264_param_default_preset(&(xe->x264_params), "veryfast", "zerolatency");
-
+            x264_param_default_preset(&(xe->x264_params),
+                                      "veryfast", "zerolatency");
             xe->x264_params.i_width = width;
             xe->x264_params.i_height = height;
             xe->x264_params.i_threads = 1;
             xe->x264_params.i_fps_num = 24;
             xe->x264_params.i_fps_den = 1;
-            //xe->x264_params.i_sps_id = 1;
-            //xe->x264_params.rc.i_rc_method = X264_RC_CQP;
-            //xe->x264_params.rc.i_rc_method = X264_RC_CRF;
-            //xe->x264_params.rc.f_rf_constant = 18;
-            //xe->x264_params.rc.i_bitrate = 1000000 * 2;
-
-            //xe->x264_params.rc.i_qp_constant = 23;
-
-            //xe->x264_params.i_slice_max_size = 0;
-            //xe->x264_params.b_vfr_input = 0;
-            //xe->x264_params.b_sliced_threads = 0;
-            //xe->x264_params.i_nal_hrd = 0;
-            //xe->x264_params.b_pic_struct = 0;
-
-            //xe->x264_params.i_bframe = 2;
-            //xe->x264_params.i_keyint_max = 2;
-            //xe->x264_params.b_cabac = 1;
-            //xe->x264_params.i_bframe = 0;
-            //xe->x264_params.b_full_recon = 1;
-            //xe->x264_params.b_vfr_input = 0;
-            //xe->x264_params.i_bframe_pyramid = 1;
-            //xe->x264_params.i_bframe_adaptive = 1;
-            //xe->x264_params.b_interlaced = 1;
-            //xe->x264_params.b_fake_interlaced = 1;
-            //xe->x264_params.i_frame_packing = 6;
-            //xe->x264_params.i_bframe_adaptive = 1;
-            //xe->x264_params.b_pic_struct = 1;
-            //xe->x264_params.b_stitchable = 0;
-            //xe->x264_params.rc.b_mb_tree = 1;
-            //xe->x264_params.b_annexb = 0;
             x264_param_apply_profile(&(xe->x264_params), "high");
-            //xe->x264_params.i_slice_count = 1;
-            // xe->x264_params.i_nal_hrd = 0;
-            // xe->x264_params.b_repeat_headers = 1;
-            // xe->x264_params.b_aud = 0;
-            // xe->x264_params.b_pic_struct = 1;
-            // xe->x264_params.i_bframe = 0;
+
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
             if (xe->x264_enc_han == 0)
             {
@@ -188,53 +149,6 @@ xrdp_encoder_x264_encode(void *handle, int session,
 
     if ((data != 0) && (xe->x264_enc_han != 0))
     {
-        //int full_size = width * height;
-        //int quarter_size = full_size / 4;
-
-        // src8 = data;
-        // dst8 = xe->yuvdata;
-        // for (index = 0; index < height; index++)
-        // {
-        //     g_memcpy(dst8, src8, width);
-        //     src8 += width;
-        //     dst8 += xe->x264_params.i_width;
-        // }
-
-        // src8 = data;
-        // src8 += width * height;
-        // dst8 = xe->yuvdata;
-
-        // frame_area = xe->x264_params.i_width * xe->x264_params.i_height;
-        // dst8 += frame_area;
-        // for (index = 0; index < height; index++)
-        // {
-        //     g_memcpy(dst8, src8, width / 2);
-        //     src8 += width / 2;
-        //     dst8 += xe->x264_params.i_width / 2;
-        // }
-
-        // g_memset(&pic_in, 0, sizeof(pic_in));
-        // pic_in.img.i_csp = X264_CSP_I420;
-        // pic_in.img.i_plane = 3;
-        // pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
-        // pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
-        // pic_in.img.plane[2] = (unsigned char *) (xe->yuvdata + frame_area * 5 / 4);
-        // pic_in.img.i_stride[0] = xe->x264_params.i_width;
-        // pic_in.img.i_stride[1] = xe->x264_params.i_width / 2;
-        // pic_in.img.i_stride[2] = pic_in.img.i_stride[1];
-
-        
-
-
-        //pic_in.i_pic_struct = PIC_STRUCT_PROGRESSIVE;
-
-        //x264_picture_alloc(&pic_in, X264_CSP_I420, width, height);
-        // Copy input image to x264 picture structure
-        //memcpy(pic_in.img.plane[0], data, full_size);
-        //memcpy(pic_in.img.plane[1], data + full_size, quarter_size);
-        //memcpy(pic_in.img.plane[2], data + full_size * 5 / 4, quarter_size);
-
-
         src8 = data;
         dst8 = xe->yuvdata;
         for (index = 0; index < height; index++)
@@ -301,13 +215,15 @@ xrdp_encoder_x264_encode(void *handle, int session,
                         g_memcpy(write_location, payload, size);
                         break;
                     }
-                    LOG(LOG_LEVEL_DEBUG, "Expanding start code %d.", nalUnitType);
+                    LOG(LOG_LEVEL_DEBUG, "Expanding start code %d.",
+                        nalUnitType);
                     g_memcpy(write_location, "\x00\x00\x00\x01", 4);
                     g_memcpy(write_location + 4, payload + 3, size - 3);
                     *cdata_bytes += 1;
                     break;
                 default:
-                    LOG(LOG_LEVEL_DEBUG, "Skipping NAL of type %d.", nalUnitType);
+                    LOG(LOG_LEVEL_DEBUG, "Skipping NAL of type %d.",
+                        nalUnitType);
                     continue;
             }
         }
