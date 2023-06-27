@@ -60,7 +60,7 @@ xrdp_encoder_openh264_encode(void *handle, int session,
 	h264->frameRate = 24;
 
 	int full_size = enc_width * enc_height;
-    int quarter_size = full_size / 4;
+	int quarter_size = full_size / 4;
 
 	memcpy(sourcePicture->pData[0], data, full_size);
 	memcpy(sourcePicture->pData[1], data + full_size, quarter_size);
