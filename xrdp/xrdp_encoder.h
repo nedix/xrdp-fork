@@ -72,11 +72,13 @@ struct xrdp_enc_data_done
         mainly due to AVC444v2 streams.
         TODO: This is a pretty ugly hack, we should refactor this similarly
         to how Ogon or FreeRDP do it.
-    */ 
+    */
+    int out_data_bytes1;
     int comp_bytes1;
     int pad_bytes1;
     char *comp_pad_data1;
 
+    int out_data_bytes2;
     int comp_bytes2;
     int pad_bytes2;
     char *comp_pad_data2;

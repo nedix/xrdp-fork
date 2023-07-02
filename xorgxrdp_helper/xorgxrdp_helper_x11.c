@@ -144,7 +144,8 @@ struct mon_info
     inf_image_t inf_image;
     GLuint bmp_texture;
     GLuint enc_texture;
-    int tex_format;
+    int tex_format[2];
+    int num_tex_formats;
     GLfloat *(*get_vertices)(GLuint *vertices_bytes,
                              GLuint *vertices_pointes,
                              int num_crects, struct xh_rect *crects,
@@ -203,7 +204,7 @@ struct rgb2yuv_matrix
 static struct rgb2yuv_matrix g_rgb2yux_matrix[3] =
 {
     {
-        /* yuv bt601 lagecy */
+        /* yuv bt601 legacy */
         {  66.0 / 256.0,  129.0 / 256.0,   25.0 / 256.0,   16.0 / 256.0 },
         { -38.0 / 256.0,  -74.0 / 256.0,  112.0 / 256.0,  128.0 / 256.0 },
         { 112.0 / 256.0,  -94.0 / 256.0,  -18.0 / 256.0,  128.0 / 256.0 }
@@ -642,10 +643,20 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     glBindTexture(GL_TEXTURE_2D, enc_texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+// #if AVC444
+//     // Create a second texture here...
+//     glGenTextures(2, &enc_texture);
+//     glBindTexture(GL_TEXTURE_2D, enc_texture);
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+// #endif
     if (g_enc == ENC_NVENC)
     {
         LOG(LOG_LEVEL_INFO, "using XH_YUV420");
-        mi->tex_format = XH_YUV420;
+        //mi->tex_format[0] = XH_YUV420;
+        mi->tex_format[0] = XH_YUV444_V2_MV;
+        mi->tex_format[1] = XH_YUV444_V2_AUX;
+        mi->num_tex_formats = 2;
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height * 3 / 2, 0,
                      GL_RED, GL_UNSIGNED_BYTE, NULL);
         mi->get_vertices = get_vertices420;
@@ -657,7 +668,8 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     else if (g_enc == ENC_YAMI)
     {
         LOG(LOG_LEVEL_INFO, "using XH_YUV422");
-        mi->tex_format = XH_YUV422;
+        mi->tex_format[0] = XH_YUV422;
+        mi->num_tex_formats = 1;
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width / 2, height, 0,
                      GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, NULL);
         mi->get_vertices = get_vertices444; /* same as 444 */
@@ -669,7 +681,8 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     else
     {
         LOG(LOG_LEVEL_INFO, "using XH_YUV444");
-        mi->tex_format = XH_YUV444;
+        mi->tex_format[0] = XH_YUV444;
+        mi->num_tex_formats = 1;
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
                      GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, NULL);
         mi->get_vertices = get_vertices444;
@@ -686,7 +699,7 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     glBindTexture(GL_TEXTURE_2D, 0);
 
     if (g_enc_funcs[g_enc].create_enc(width, height,
-                                      enc_texture, mi->tex_format,
+                                      enc_texture, XH_YUV420,
                                       &(mi->ei)) != 0)
     {
         return 1;
@@ -695,6 +708,7 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     mi->pixmap = pixmap;
     mi->inf_image = inf_image;
     mi->enc_texture = enc_texture;
+
     mi->width = width;
     mi->height = height;
     mi->bmp_texture = bmp_texture;
@@ -702,31 +716,20 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     return 0;
 }
 
-/*****************************************************************************/
-enum encoder_result
-xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
-                                  int num_crects, struct xh_rect *crects,
-                                  void *cdata, int *cdata_bytes)
+
+static void
+xorgxrdp_helper_x11_run_shader(int width, int height,
+                               struct mon_info *mi,
+                               struct shader_info *si,
+                               int num_crects, struct xh_rect *crects)
 {
-    struct mon_info *mi;
-    struct shader_info *si;
-    enum encoder_result rv;
     GLuint vao;
     GLuint vbo;
     GLfloat *vertices;
     GLuint vertices_bytes;
     GLuint vertices_pointes;
 
-    mi = g_mons + mon_id % MAX_MON;
-    if ((width != mi->width) || (height != mi->height))
-    {
-        LOG(LOG_LEVEL_ERROR, "error width %d should be %d "
-            "height %d should be %d",
-            width, mi->width, height, mi->height);
-        return ENCODER_ERROR;
-    }
     /* rgb to yuv */
-    si = g_si + mi->tex_format % XH_NUM_SHADERS;
     glEnable(GL_TEXTURE_2D);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, mi->bmp_texture);
@@ -742,7 +745,7 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
     {
         LOG(LOG_LEVEL_ERROR, "error get_vertices failed num_crects %d",
             num_crects);
-        return ENCODER_ERROR;
+        return;
     }
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
@@ -766,11 +769,45 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
     g_inf_funcs[g_inf].release_tex_image(mi->inf_image);
     glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
-    /* sync before encoding */
-    XFlush(g_display);
-    glFinish();
-    /* encode */
-    rv = g_enc_funcs[g_enc].encode(mi->ei, mi->enc_texture,
-                                   cdata, cdata_bytes);
-    return rv;
+}
+
+/*****************************************************************************/
+enum encoder_result
+xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
+                                  int num_crects, struct xh_rect *crects,
+                                  void *cdata, int *cdata_bytes)
+{
+    struct mon_info *mi;
+    struct shader_info *si;
+    enum encoder_result rv;
+    mi = g_mons + mon_id % MAX_MON;
+    int running_size = 0;
+    if ((width != mi->width) || (height != mi->height))
+    {
+        LOG(LOG_LEVEL_ERROR, "error width %d should be %d "
+            "height %d should be %d",
+            width, mi->width, height, mi->height);
+        return ENCODER_ERROR;
+    }
+    void *enc_write_location;
+    for (int i = 0; i < mi->num_tex_formats; ++i) {
+        si = g_si + mi->tex_format[i] % XH_NUM_SHADERS;
+        xorgxrdp_helper_x11_run_shader(
+            width, height, mi, si, num_crects, crects);
+        /* sync before encoding */
+        XFlush(g_display);
+        glFinish();
+        /* encode */
+        cdata_bytes[i] = 128 * 1024 * 1024;
+        int quad_index = 4 * (i + 1);
+        enc_write_location = cdata + running_size + quad_index;
+        rv = g_enc_funcs[g_enc].encode(mi->ei, mi->enc_texture,
+                                       enc_write_location, &(cdata_bytes[i]));
+        if (rv == ENCODER_ERROR)
+        {
+            return ENCODER_ERROR;
+        }
+        running_size += cdata_bytes[i];
+    }
+    return INCREMENTAL_FRAME_ENCODED;
 }
