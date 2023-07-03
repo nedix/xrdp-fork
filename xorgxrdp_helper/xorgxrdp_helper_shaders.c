@@ -160,6 +160,11 @@ MAIN VIEW - NV12
     ...
     0E 0E 2E 2E 4E 4E 6E 6E 8E 8E AE AE CE CE EE EE
 */
+/*
+    TODO: This appears to be identical to g_fs_rgb_to_yuv420.
+    Keeping this now because this is a dev prototype, but we might
+    want to remove this in the future.
+*/ 
 static const GLchar g_fs_rgb_to_yuv420_mv[] = "\
 uniform sampler2D tex;\n\
 uniform vec2 tex_size;\n\
