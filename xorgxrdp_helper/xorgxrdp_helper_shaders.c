@@ -186,13 +186,21 @@ void main(void)\n\
         if (mod(x, 2.0) < 1.0)\n\
         {\n\
             pix = texture2D(tex, vec2(x, y) / tex_size);\n\
+            pix += texture2D(tex, vec2(x + 1.0, y) / tex_size);\n\
+            pix += texture2D(tex, vec2(x, y + 1.0) / tex_size);\n\
+            pix += texture2D(tex, vec2(x + 1.0, y + 1.0) / tex_size);\n\
+            pix /= 4.0;\n\
             pix.a = 1.0;\n\
             pix = vec4(clamp(dot(umath, pix), 0.0, 1.0), 0.0, 0.0, 1.0);\n\
             gl_FragColor = pix;\n\
         }\n\
         else\n\
         {\n\
-            pix = texture2D(tex, vec2(x - 1.0, y) / tex_size);\n\
+            pix = texture2D(tex, vec2(x, y) / tex_size);\n\
+            pix += texture2D(tex, vec2(x - 1.0, y) / tex_size);\n\
+            pix += texture2D(tex, vec2(x, y + 1.0) / tex_size);\n\
+            pix += texture2D(tex, vec2(x - 1.0, y + 1.0) / tex_size);\n\
+            pix /= 4.0;\n\
             pix.a = 1.0;\n\
             pix = vec4(clamp(dot(vmath, pix), 0.0, 1.0), 0.0, 0.0, 1.0);\n\
             gl_FragColor = pix;\n\
