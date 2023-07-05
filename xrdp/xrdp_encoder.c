@@ -779,17 +779,39 @@ build_enc_h264_avc444_yuv420_and_chroma420_stream(struct xrdp_encoder *self, XRD
     comp_bytes_pre1 = build_rfx_avc420_metablock(s, rrects, rcount,
                                                  scr_width, scr_height);
     out_data_bytes1 = 128 * 1024 * 1024;
+
+    if (enc->flags & 1)
+    {
+        /* already compressed */
+        uint8_t *ud = (uint8_t *) (enc->data);
+        int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
+        if ((cbytes < 1) || (cbytes > out_data_bytes))
+        {
+            LOG(LOG_LEVEL_INFO, "process_enc_h264: bad h264 bytes %d", cbytes);
+            g_free(out_data);
+            return 0;
+        }
+        LOG(LOG_LEVEL_DEBUG,
+            "process_enc_h264: already compressed and size is %d", cbytes);
+        out_data_bytes = cbytes;
+        g_memcpy(s->p, enc->data + 4, out_data_bytes);
+    }
+    else
+    {
 #if defined(XRDP_X264)
-    error = xrdp_encoder_x264_encode(self->codec_handle, 0,
-                                     enc->width, enc->height, 0,
-                                     enc->data + (enc->height * enc->width) * 3 / 2,
-                                     s->p, &out_data_bytes1);
+        error = xrdp_encoder_x264_encode(self->codec_handle, 0,
+                                         enc->width, enc->height, 0,
+                                         enc->data
+                                             + (enc->height * enc->width) * 3 / 2,
+                                         s->p, &out_data_bytes1);
 #elif defined(XRDP_OPENH264)
-    error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
-                                            enc->width, enc->height, 0,
-                                            enc->data + (enc->height * enc->width) * 3 / 2,
-                                            s->p, &out_data_bytes1);
+        error = xrdp_encoder_openh264_encode(self->codec_handle, 0,
+                                             enc->width, enc->height, 0,
+                                             enc->data
+                                                 + (enc->height * enc->width) * 3 / 2,
+                                             s->p, &out_data_bytes1);
 #endif
+    }
     if (error != 0)
     {
         LOG_DEVEL(LOG_LEVEL_TRACE,
