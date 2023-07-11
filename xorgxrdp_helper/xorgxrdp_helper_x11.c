@@ -716,61 +716,6 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     return 0;
 }
 
-
-static void
-xorgxrdp_helper_x11_run_shader(int width, int height,
-                               struct mon_info *mi,
-                               struct shader_info *si,
-                               int num_crects, struct xh_rect *crects)
-{
-    GLuint vao;
-    GLuint vbo;
-    GLfloat *vertices;
-    GLuint vertices_bytes;
-    GLuint vertices_pointes;
-
-    /* rgb to yuv */
-    glEnable(GL_TEXTURE_2D);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, mi->bmp_texture);
-    g_inf_funcs[g_inf].bind_tex_image(mi->inf_image);
-    glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D, mi->enc_texture, 0);
-    glUseProgram(si->program);
-    /* setup vertices from crects */
-    vertices = mi->get_vertices(&vertices_bytes, &vertices_pointes,
-                                num_crects, crects, width, height);
-    if (vertices == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR, "error get_vertices failed num_crects %d",
-            num_crects);
-        return;
-    }
-    glGenVertexArrays(1, &vao);
-    glGenBuffers(1, &vbo);
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices_bytes, vertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, NULL);
-    /* uniforms */
-    glUniform2f(si->tex_size_loc, mi->width, mi->height);
-    /* viewport and draw */
-    glViewport(mi->viewport.x, mi->viewport.y, mi->viewport.w, mi->viewport.h);
-    glDrawArrays(GL_TRIANGLES, 0, vertices_pointes);
-    /* cleanup */
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    glDeleteBuffers(1, &vbo);
-    glDeleteVertexArrays(1, &vao);
-    g_free(vertices);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    g_inf_funcs[g_inf].release_tex_image(mi->inf_image);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glUseProgram(0);
-}
-
 /*****************************************************************************/
 enum encoder_result
 xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
@@ -780,6 +725,12 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
     struct mon_info *mi;
     struct shader_info *si;
     enum encoder_result rv;
+    GLuint vao;
+    GLuint vbo;
+    GLfloat *vertices;
+    GLuint vertices_bytes;
+    GLuint vertices_pointes;
+
     mi = g_mons + mon_id % MAX_MON;
     int running_size = 0;
     if ((width != mi->width) || (height != mi->height))
@@ -790,15 +741,48 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
         return ENCODER_ERROR;
     }
     void *enc_write_location;
+
+    /* rgb to yuv */
+    glEnable(GL_TEXTURE_2D);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, mi->bmp_texture);
+    g_inf_funcs[g_inf].bind_tex_image(mi->inf_image);
+    glBindFramebuffer(GL_FRAMEBUFFER, g_fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, mi->enc_texture, 0);
+
+    /* setup vertices from crects */
+    vertices = mi->get_vertices(&vertices_bytes, &vertices_pointes,
+                                num_crects, crects, width, height);
+    if (vertices == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "error get_vertices failed num_crects %d",
+            num_crects);
+        return ENCODER_ERROR;
+    }
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &vbo);
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, vertices_bytes, vertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, NULL);
+    glViewport(mi->viewport.x, mi->viewport.y, mi->viewport.w, mi->viewport.h);
+    XFlush(g_display);
+
     for (int i = 0; i < mi->num_tex_formats; ++i) {
-        si = g_si + mi->tex_format[i] % XH_NUM_SHADERS;
-        xorgxrdp_helper_x11_run_shader(
-            width, height, mi, si, num_crects, crects);
+        int index = mi->tex_format[i] % XH_NUM_SHADERS;
+        si = g_si + index;
+        //LOG(LOG_LEVEL_INFO, "Running shader ID: %d", index);
+        glUseProgram(si->program);
+        /* uniforms */
+        glUniform2f(si->tex_size_loc, mi->width, mi->height);
+        /* draw */
+        glDrawArrays(GL_TRIANGLES, 0, vertices_pointes);
         /* sync before encoding */
-        XFlush(g_display);
         glFinish();
         /* encode */
-        cdata_bytes[i] = 128 * 1024 * 1024;
+        cdata_bytes[i] = 32 * 1024 * 1024;
         int quad_index = 4 * (i + 1);
         enc_write_location = cdata + running_size + quad_index;
         rv = g_enc_funcs[g_enc].encode(mi->ei, mi->enc_texture,
@@ -809,5 +793,20 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
         }
         running_size += cdata_bytes[i];
     }
+
+    /* cleanup */
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    glDeleteBuffers(1, &vbo);
+    glDeleteVertexArrays(1, &vao);
+    g_free(vertices);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    g_inf_funcs[g_inf].release_tex_image(mi->inf_image);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glUseProgram(0);
+
+    //XFlush(g_display);
+    glFinish();
+
     return INCREMENTAL_FRAME_ENCODED;
 }

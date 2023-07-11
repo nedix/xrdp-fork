@@ -11,7 +11,7 @@ AM_CPPFLAGS += -DXRDP_NVENC
 AM_CPPFLAGS += $(XRDP_NVENC_CFLAGS)
 XRDP_EXTRA_LIBS += $(XRDP_NVENC_LIBS)
 XRDP_EXTRA_SOURCES += xorgxrdp_helper_nvenc.c xorgxrdp_helper_nvenc.h \
-encoder_headers/nvEncodeAPI_11_0.h encoder_headers/nvEncodeAPI_11_1.h
+encoder_headers/nvEncodeAPI_12_1_14.h
 endif
 
 if XRDP_YAMI
