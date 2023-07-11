@@ -992,12 +992,16 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
         out_uint32_le(s, out_data_bytes);
     }
 
+#if SAVE_VIDEO
+    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
+#endif
+
     enc_done = g_new0(XRDP_ENC_DATA_DONE, 1);
     if (enc_done == NULL)
     {
         return 0;
     }
-    enc_done->out_data_bytes1 = out_data_bytes + 4;
+    enc_done->out_data_bytes1 = out_data_bytes;
     enc_done->comp_bytes1 = 4 + comp_bytes_pre + out_data_bytes;
     enc_done->pad_bytes1 = 256;
     enc_done->comp_pad_data1 = out_data;
@@ -1066,7 +1070,7 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
     if (enc->flags & 1)
     {
         /* already compressed */
-        uint8_t *ud = (uint8_t *) (enc->data + enc_done->out_data_bytes1);
+        uint8_t *ud = (uint8_t *) (enc->data + enc_done->out_data_bytes1 + 4);
         int cbytes = ud[0] | (ud[1] << 8) | (ud[2] << 16) | (ud[3] << 24);
         if ((cbytes < 1) || (cbytes > out_data_bytes))
         {
@@ -1077,7 +1081,7 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
         LOG(LOG_LEVEL_DEBUG,
             "process_enc_h264: already compressed and size is %d", cbytes);
         out_data_bytes = cbytes;
-        g_memcpy(s->p, enc->data + enc_done->out_data_bytes1 + 4, out_data_bytes);
+        g_memcpy(s->p, enc->data + enc_done->out_data_bytes1 + 8, out_data_bytes);
     }
     else
     {
@@ -1114,6 +1118,7 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
     // TODO: Specify LC code here
     const uint8_t LC = 0x02;
     const uint32_t bitstream = ((LC & 0x03UL) << 30UL);
+
     out_uint32_le(s, bitstream);
     s_pop_layer(s, sec_hdr);
 
@@ -1125,6 +1130,10 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
         s_pop_layer(s, iso_hdr);
         out_uint32_le(s, out_data_bytes);
     }
+
+#if SAVE_VIDEO
+    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
+#endif
 
     enc_done->out_data_bytes2 = out_data_bytes;
     enc_done->comp_bytes2 = 4 + comp_bytes_pre + out_data_bytes;
