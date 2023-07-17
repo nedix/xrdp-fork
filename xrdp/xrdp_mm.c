@@ -1198,7 +1198,7 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
     }
     if (best_h264_index >= 0) /* prefer h264, todo use setting in xrdp.ini for this */
     {
-#if defined(XRDP_X264) || defined(XRDP_OPENH264) || defined(XRDP_NVENC)
+#if defined(XRDP_X264) || defined(XRDP_OPENH264) || defined(XRDP_NVENC) || defined(XRDP_NVENC_NO_OPENGL)
         best_index = best_h264_index;
         self->egfx_flags = 1;
 #endif
@@ -3324,8 +3324,8 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                     enc_done->comp_pad_data1 + enc_done->pad_bytes1,
                     enc_done->comp_bytes1);
                 if (enc_done->comp_bytes2 > 0) {
-                    //xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
-                    //++enc_done->enc->frame_id;
+                    xrdp_egfx_send_frame_end(self->egfx, enc_done->enc->frame_id);
+                    ++enc_done->enc->frame_id;
                     xrdp_egfx_send_frame_start(self->egfx,
                             enc_done->enc->frame_id, 0);
                     xrdp_egfx_send_wire_to_surface1(self->egfx, self->egfx->surface_id,

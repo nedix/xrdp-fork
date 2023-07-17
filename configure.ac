@@ -179,6 +179,13 @@ AC_ARG_ENABLE(nvenc, AS_HELP_STRING([--enable-nvenc],
                XRDP_NVENC_LIBS should be set if used]),
               [], [enable_nvenc=no])
 AM_CONDITIONAL(XRDP_NVENC, [test x$enable_nvenc = xyes])
+
+AC_ARG_ENABLE(nvenc_no_opengl, AS_HELP_STRING([--enable-nvenc-no-opengl],
+              [Use nvenc library (default: no), env vars XRDP_NVENC_CFLAGS and
+               XRDP_NVENC_LIBS should be set if used]),
+              [], [enable_nvenc_no_opengl=no])
+AM_CONDITIONAL(XRDP_NVENC_NO_OPENGL, [test x$enable_nvenc_no_opengl = xyes])
+
 AC_ARG_ENABLE(yami, AS_HELP_STRING([--enable-yami],
               [Use yami library (default: no)]),
               [], [enable_yami=no])
@@ -503,6 +510,18 @@ then
 fi
 fi
 
+if test "x$enable_nvenc_no_opengl" = "xyes"
+then
+if test ! -z "$XRDP_NVENC_CFLAGS"
+then
+  AC_SUBST(XRDP_NVENC_CFLAGS, ["$XRDP_NVENC_CFLAGS"])
+fi
+if test ! -z "$XRDP_NVENC_LIBS"
+then
+  AC_SUBST(XRDP_NVENC_LIBS, ["$XRDP_NVENC_LIBS"])
+fi
+fi
+
 if test "x$enable_yami" = "xyes"
 then
 if test ! -z "$XRDP_YAMI_CFLAGS"
@@ -670,6 +689,7 @@ echo "  jpeg                    $enable_jpeg"
 echo "  turbo jpeg              $enable_tjpeg"
 echo "  rfxcodec                $enable_rfxcodec"
 echo "  nvenc                   $enable_nvenc"
+echo "  nvenc_no_opengl         $enable_nvenc_no_opengl"
 echo "  yami                    $enable_yami"
 echo "  x264                    $enable_x264"
 echo "  openh264                $enable_openh264"

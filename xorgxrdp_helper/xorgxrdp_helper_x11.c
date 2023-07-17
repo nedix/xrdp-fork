@@ -782,7 +782,6 @@ xorgxrdp_helper_x11_encode_pixmap(int width, int height, int mon_id,
         /* sync before encoding */
         glFinish();
         /* encode */
-        cdata_bytes[i] = 32 * 1024 * 1024;
         int quad_index = 4 * (i + 1);
         enc_write_location = cdata + running_size + quad_index;
         rv = g_enc_funcs[g_enc].encode(mi->ei, mi->enc_texture,
