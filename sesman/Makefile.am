@@ -52,6 +52,10 @@ endif
 
 if XRDP_NVENC
 xorgconfigfile=xrdp/xorg_nvidia.conf
+endif
+
+if XRDP_NVENC_NO_OPENGL
+xorgconfigfile=xrdp/xorg_nvidia.conf
 else
 xorgconfigfile=xrdp/xorg.conf
 endif

@@ -262,9 +262,9 @@ xorgxrdp_helper_nvenc_create_encoder(int width, int height, int tex,
     // encCfg.encodeCodecConfig.h264Config.ppsId = 1;
     //encCfg.encodeCodecConfig.h264Config.enableIntraRefresh = 1;
     encCfg.encodeCodecConfig.h264Config.disableSVCPrefixNalu = 1;
-    encCfg.encodeCodecConfig.h264Config.enableFillerDataInsertion = 1;
+    encCfg.encodeCodecConfig.h264Config.enableFillerDataInsertion = 0;
     encCfg.encodeCodecConfig.h264Config.enableLTR = 1;
-    encCfg.encodeCodecConfig.h264Config.ltrTrustMode = 1;
+    encCfg.encodeCodecConfig.h264Config.ltrTrustMode = 0;
     encCfg.encodeCodecConfig.h264Config.ltrNumFrames = 2;
 
     createEncodeParams.encodeConfig = &encCfg;
@@ -379,18 +379,18 @@ xorgxrdp_helper_nvenc_encode(struct enc_info *ei, int tex,
         if (xrdp_invalidate == 1)
         {
             picParams.codecPicParams.h264PicParams.ltrMarkFrame = 1;
-            picParams.codecPicParams.h264PicParams.ltrMarkFrameIdx = 1;
+            picParams.codecPicParams.h264PicParams.ltrMarkFrameIdx = 2;
         }
         else if (xrdp_invalidate == 0) {
             picParams.codecPicParams.h264PicParams.ltrMarkFrame = 1;
-            picParams.codecPicParams.h264PicParams.ltrMarkFrameIdx = 2;
+            picParams.codecPicParams.h264PicParams.ltrMarkFrameIdx = 1;
         }
     }
     else
     {
         picParams.pictureType = NV_ENC_PIC_TYPE_P;
         picParams.encodePicFlags = 0;
-        picParams.codecPicParams.h264PicParams.ltrUseFrameBitmap = ei->frameCount % 2 + 1;
+        picParams.codecPicParams.h264PicParams.ltrUseFrameBitmap = (ei->frameCount % 2) + 1;
     }
     nv_error = g_enc_funcs.nvEncEncodePicture(ei->enc, &picParams);
     rv = ENCODER_ERROR;

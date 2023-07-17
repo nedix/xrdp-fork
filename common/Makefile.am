@@ -32,6 +32,10 @@ AM_CPPFLAGS = \
 
 if XRDP_NVENC
 AM_CPPFLAGS += -DXRDP_NVENC
+else
+if XRDP_NVENC_NO_OPENGL
+AM_CPPFLAGS += -DXRDP_NVENC
+endif
 endif
 
 # -no-suppress is an automake-specific flag which is needed
