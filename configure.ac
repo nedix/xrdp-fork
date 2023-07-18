@@ -184,7 +184,7 @@ AC_ARG_ENABLE(nvenc_no_opengl, AS_HELP_STRING([--enable-nvenc-no-opengl],
               [Use nvenc library (default: no), env vars XRDP_NVENC_CFLAGS and
                XRDP_NVENC_LIBS should be set if used]),
               [], [enable_nvenc_no_opengl=no])
-AM_CONDITIONAL(XRDP_NVENC_NO_OPENGL, [test x$enable_nvenc_no_opengl = xyes])
+AM_CONDITIONAL(XRDP_VANILLA_NVIDIA_CODEC, [test x$enable_nvenc_no_opengl = xyes])
 
 AC_ARG_ENABLE(yami, AS_HELP_STRING([--enable-yami],
               [Use yami library (default: no)]),

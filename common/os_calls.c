@@ -179,7 +179,7 @@ g_init(const char *app_name)
 
     g_mk_socket_path(app_name);
 
-#if defined(XRDP_NVENC) || defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_NVENC) || defined(XRDP_VANILLA_NVIDIA_CODEC)
     if (g_strcmp(app_name, "xrdp") == 0)
     {
         /* call cuInit() to initalize the nvidia drivers */

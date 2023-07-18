@@ -32,7 +32,7 @@
 #include "rfxcodec_encode.h"
 #endif
 
-#ifdef XRDP_NVENC_NO_OPENGL
+#ifdef XRDP_VANILLA_NVIDIA_CODEC
 #include "xrdp_encoder_nvenc.h"
 #endif
 
@@ -116,7 +116,7 @@ xrdp_encoder_create(struct xrdp_mm *mm)
 #endif
         self->process_enc = process_enc_h264;
         self->gfx = 1;
-#if defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_VANILLA_NVIDIA_CODEC)
         self->codec_handle = xrdp_encoder_nvenc_create();
 #elif defined(XRDP_X264)
         self->codec_handle = xrdp_encoder_x264_create();
@@ -187,7 +187,7 @@ xrdp_encoder_create(struct xrdp_mm *mm)
             (12 << 24) | (64 << 16) | (0 << 12) | (0 << 8) | (0 << 4) | 0;
 #endif
         self->process_enc = process_enc_h264;
-#if defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_VANILLA_NVIDIA_CODEC)
         self->codec_handle = xrdp_encoder_nvenc_create();
 #elif defined(XRDP_X264)
         self->codec_handle = xrdp_encoder_x264_create();
@@ -269,7 +269,7 @@ xrdp_encoder_delete(struct xrdp_encoder *self)
         rfxcodec_encode_destroy(self->codec_handle);
     }
 #endif
-#if defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_VANILLA_NVIDIA_CODEC)
     else if (self->process_enc == process_enc_h264)
     {
         xrdp_encoder_nvenc_delete(self->codec_handle);
@@ -612,7 +612,7 @@ static int n_save_data(const char *data, int data_size, int width, int height)
 }
 #endif
 
-#if defined(XRDP_X264) || defined(XRDP_OPENH264) || defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_X264) || defined(XRDP_OPENH264) || defined(XRDP_VANILLA_NVIDIA_CODEC)
 
 #define AVC444 1
 
@@ -959,7 +959,7 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
     }
     else
     {
-#if defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_VANILLA_NVIDIA_CODEC)
         error = xrdp_encoder_nvenc_encode(self->codec_handle, 0,
                                     enc->width, enc->height, 0,
                                     enc->data,
@@ -1104,7 +1104,7 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
     else
     {
         char *data_position =  enc->data + (enc->height * enc->width) * 3 / 2;
-#if defined(XRDP_NVENC_NO_OPENGL)
+#if defined(XRDP_VANILLA_NVIDIA_CODEC)
         error = xrdp_encoder_nvenc_encode(self->codec_handle, 0,
                                     enc->width, enc->height, 0,
                                     data_position,
