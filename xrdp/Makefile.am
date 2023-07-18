@@ -26,8 +26,8 @@ AM_CPPFLAGS += -I$(top_srcdir)/librfxcodec/include
 XRDP_EXTRA_LIBS += $(top_builddir)/librfxcodec/src/.libs/librfxencode.a
 endif
 
-if XRDP_NVENC_NO_OPENGL
-AM_CPPFLAGS += -DXRDP_NVENC
+if XRDP_VANILLA_NVIDIA_CODEC
+AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
 AM_CPPFLAGS += $(XRDP_NVENC_CFLAGS)
 XRDP_EXTRA_LIBS += $(XRDP_NVENC_LIBS)
 XRDP_EXTRA_SOURCES += xrdp_encoder_nvenc.c xrdp_encoder_nvenc.h
