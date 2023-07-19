@@ -976,8 +976,8 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
                                              s->p, &out_data_bytes);
 #endif
     }
-    LOG_DEVEL(LOG_LEVEL_TRACE,
-              "process_enc_h264: xrdp_encoder_x264_encode rv %d "
+    LOG(LOG_LEVEL_INFO,
+              "process_enc_h264: xrdp_encoder_nvenc_encode_yuv420 rv %d "
               "out_data_bytes %d width %d height %d",
               error, out_data_bytes, enc->width, enc->height);
     if (error != 0)
@@ -1103,7 +1103,7 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
     }
     else
     {
-        char *data_position =  enc->data + (enc->height * enc->width) * 3 / 2;
+        char *data_position = enc->data + (enc->height * enc->width) * 3 / 2;
 #if defined(XRDP_VANILLA_NVIDIA_CODEC)
         error = xrdp_encoder_nvenc_encode(self->codec_handle, 0,
                                     enc->width, enc->height, 0,
@@ -1122,8 +1122,8 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
                                              s->p, &out_data_bytes);
 #endif
     }
-    LOG_DEVEL(LOG_LEVEL_TRACE,
-              "process_enc_h264: xrdp_encoder_x264_encode rv %d "
+    LOG(LOG_LEVEL_INFO,
+              "process_enc_h264: xrdp_encoder_nvenc_encode_chroma420 rv %d "
               "out_data_bytes %d width %d height %d",
               error, out_data_bytes, enc->width, enc->height);
     if (error != 0)
