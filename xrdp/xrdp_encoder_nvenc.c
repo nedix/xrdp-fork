@@ -193,6 +193,23 @@ xrdp_encoder_nvenc_encode(void *handle, int session,
             presetCfg.rcParams.constQP.qpIntra = 28;
             presetCfg.encodeCodecConfig.h264Config.chromaFormatIDC = 1;
             presetCfg.encodeCodecConfig.h264Config.idrPeriod = NVENC_INFINITE_GOPLENGTH;
+
+            presetCfg.encodeCodecConfig.h264Config.repeatSPSPPS = 1;
+            presetCfg.encodeCodecConfig.h264Config.disableSPSPPS = 0;
+            presetCfg.encodeCodecConfig.h264Config.useBFramesAsRef = NV_ENC_BFRAME_REF_MODE_DISABLED;
+            presetCfg.encodeCodecConfig.h264Config.repeatSPSPPS = 1;
+            presetCfg.encodeCodecConfig.h264Config.disableSPSPPS = 0;
+            presetCfg.encodeCodecConfig.h264Config.useBFramesAsRef = NV_ENC_BFRAME_REF_MODE_DISABLED;
+            presetCfg.encodeCodecConfig.h264Config.outputBufferingPeriodSEI = 0;
+            presetCfg.encodeCodecConfig.h264Config.outputPictureTimingSEI = 0;
+            presetCfg.encodeCodecConfig.h264Config.outputFramePackingSEI = 0;
+            presetCfg.encodeCodecConfig.h264Config.hierarchicalBFrames = 0;
+            presetCfg.encodeCodecConfig.h264Config.hierarchicalPFrames = 0;
+            presetCfg.encodeCodecConfig.h264Config.outputAUD = 0;
+            presetCfg.encodeCodecConfig.h264Config.sliceMode = 0;
+            presetCfg.encodeCodecConfig.h264Config.sliceModeData = 0;
+
+
             g_memset(&createEncodeParams, 0, sizeof(createEncodeParams));
             createEncodeParams.version = NV_ENC_INITIALIZE_PARAMS_VER;
             createEncodeParams.encodeGUID = NV_ENC_CODEC_H264_GUID;
@@ -277,7 +294,7 @@ xrdp_encoder_nvenc_encode(void *handle, int session,
         g_memcpy(cdata, lockBitstream.bitstreamBufferPtr, lockBitstream.bitstreamSizeInBytes);
         *cdata_bytes = lockBitstream.bitstreamSizeInBytes;
         ng->enc_funcs.nvEncUnlockBitstream(ne->enc, bitstreamBuffer);
-        ne->frameCount++;
+        ++ne->frameCount;
     }
     return 0; 
 }
