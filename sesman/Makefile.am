@@ -52,12 +52,12 @@ endif
 
 if XRDP_NVENC
 xorgconfigfile=xrdp/xorg_nvidia.conf
-endif
-
+else
 if XRDP_VANILLA_NVIDIA_CODEC
 xorgconfigfile=xrdp/xorg_nvidia.conf
 else
 xorgconfigfile=xrdp/xorg.conf
+endif
 endif
 
 SUBST_VARS = sed \
