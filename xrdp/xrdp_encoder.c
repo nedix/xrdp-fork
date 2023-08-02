@@ -570,7 +570,7 @@ process_enc_rfx(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 }
 #endif
 
-#define SAVE_VIDEO 0
+#define SAVE_VIDEO 1
 
 #if SAVE_VIDEO
 #include <sys/types.h>
@@ -589,7 +589,7 @@ static int n_save_data(const char *data, int data_size, int width, int height)
         int bytes_follow;
     } header;
 
-    fd = open("video.bin", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    fd = open("/home/christopher/video.bin", O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
     lseek(fd, 0, SEEK_END);
     header.tag[0] = 'B';
     header.tag[1] = 'E';
@@ -989,6 +989,10 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
         return 0;
     }
 
+#if SAVE_VIDEO
+    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
+#endif
+
     s->p += out_data_bytes;
 
     s_push_layer(s, sec_hdr, 0);
@@ -1009,10 +1013,6 @@ build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *en
         s_pop_layer(s, iso_hdr);
         out_uint32_le(s, out_data_bytes);
     }
-
-#if SAVE_VIDEO
-    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
-#endif
 
     enc_done = g_new0(XRDP_ENC_DATA_DONE, 1);
     if (enc_done == NULL)
@@ -1135,6 +1135,10 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
         return 0;
     }
 
+#if SAVE_VIDEO
+    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
+#endif
+
     s->p += out_data_bytes;
 
     s_push_layer(s, sec_hdr, 0);
@@ -1155,10 +1159,6 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
         s_pop_layer(s, iso_hdr);
         out_uint32_le(s, out_data_bytes);
     }
-
-#if SAVE_VIDEO
-    n_save_data(s->p, out_data_bytes, enc->width, enc->height);
-#endif
 
     enc_done->out_data_bytes2 = out_data_bytes;
     enc_done->comp_bytes2 = 4 + comp_bytes_pre + out_data_bytes;
