@@ -321,7 +321,7 @@ xrdp_process_message(struct xorgxrdp_info *xi, struct stream *s)
                 10 is an arbitrary number. Anecdotally, you need the first 10 frames to be key frames to make sure the client
                 receives at least one of them.
             */
-            xrdp_invalidate += 2;
+            xrdp_invalidate += 10;
         }
         else if (msg_type2 == 300) // resize
         {

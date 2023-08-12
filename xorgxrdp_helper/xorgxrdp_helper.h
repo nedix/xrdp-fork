@@ -29,6 +29,8 @@
 #define XH_BT709FR  1
 #define XH_BTRFX    2
 
+#include <stdint.h>
+
 struct xh_rect
 {
     short x;
