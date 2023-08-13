@@ -570,7 +570,7 @@ process_enc_rfx(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 }
 #endif
 
-#define SAVE_VIDEO 1
+#define SAVE_VIDEO 0
 
 #if SAVE_VIDEO
 #include <sys/types.h>
@@ -1176,33 +1176,18 @@ struct xrdp_enc_rect calculateBoundingBox(short* boxes, int numBoxes)
     boundingBox.cx = INT16_MIN;
     boundingBox.cy = INT16_MIN;
 
-    for (int i = 0; i < numBoxes; i++)
+    for (int i = 0; i < numBoxes; ++i)
     {
         int location = i * 4;
-        int x = boxes[location + 0];
-        int y = boxes[location + 1];
-        int cx = boxes[location + 2];
-        int cy = boxes[location + 3];
+        short x = boxes[location + 0];
+        short y = boxes[location + 1];
+        short cx = boxes[location + 2];
+        short cy = boxes[location + 3];
 
-        if (x < boundingBox.x)
-        {
-            boundingBox.x = x;
-        }
-
-        if (y < boundingBox.y)
-        {
-            boundingBox.y = y;
-        }
-
-        if (cx > boundingBox.cx)
-        {
-            boundingBox.cx = cx;
-        }
-
-        if (cy > boundingBox.cy)
-        {
-            boundingBox.cy = cy;
-        }
+        boundingBox.x = MIN(boundingBox.x, x);
+        boundingBox.y = MIN(boundingBox.y, y);
+        boundingBox.cx = MAX(boundingBox.cx, cx);
+        boundingBox.cy = MAX(boundingBox.cy, cy);
     }
 
     return boundingBox;

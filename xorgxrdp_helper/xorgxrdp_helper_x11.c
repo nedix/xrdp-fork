@@ -653,8 +653,8 @@ xorgxrdp_helper_x11_create_pixmap(int width, int height, int magic,
     if (g_enc == ENC_NVENC)
     {
         LOG(LOG_LEVEL_INFO, "using XH_YUV420");
-        mi->tex_format[0] = XH_YUV420;
-        //mi->tex_format[0] = XH_YUV444_V2_MV;
+        //mi->tex_format[0] = XH_YUV420;
+        mi->tex_format[0] = XH_YUV444_V2_MV;
         mi->tex_format[1] = XH_YUV444_V2_AUX;
         mi->num_tex_formats = 2;
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height * 3 / 2, 0,
