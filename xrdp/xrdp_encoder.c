@@ -622,6 +622,14 @@ build_rfx_avc420_metablock(struct stream *s, short *rrects, int rcount, int widt
     int index;
     int x, y, cx, cy;
     struct xrdp_enc_rect rect;
+    const int qp = 22; // Default set by Microsoft.
+    const int r = 0; // Required to be 0.
+    const int p = 0; // Progressively encoded flag.
+    int qpVal = 0;
+    qpVal = qp & 0x3F;
+    qpVal = (r & 1) << 6;
+    qpVal = (p & 1) << 7;
+
     out_uint32_le(s, rcount); /* numRegionRects */
     for (index = 0; index < rcount; index++)
     {
@@ -642,8 +650,9 @@ build_rfx_avc420_metablock(struct stream *s, short *rrects, int rcount, int widt
     }
     for (index = 0; index < rcount; index++)
     {
-        out_uint8(s, 23); /* qp */
-        out_uint8(s, 100); /* quality level 0..100 */
+        // 2.2.4.4.2 RDPGFX_AVC420_QUANT_QUALITY
+        out_uint8(s, qpVal); /* qp */
+        out_uint8(s, 100); /* quality level 0..100 (Microsoft uses 100) */
     }
     int comp_bytes_pre = 4 + rcount * 8 + rcount * 2;
     return comp_bytes_pre;
@@ -883,6 +892,8 @@ build_enc_h264_avc444_yuv420_and_chroma420_stream(struct xrdp_encoder *self, XRD
 #endif
     return enc_done;
 }
+
+#if AVC444
 
 static XRDP_ENC_DATA_DONE *
 build_enc_h264_avc444_yuv420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
@@ -1167,6 +1178,8 @@ build_enc_h264_avc444_chroma420_stream(struct xrdp_encoder *self, XRDP_ENC_DATA 
 
     return enc_done;
 }
+
+#endif
 
 struct xrdp_enc_rect calculateBoundingBox(short* boxes, int numBoxes)
 {
