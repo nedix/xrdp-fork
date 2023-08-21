@@ -622,13 +622,13 @@ build_rfx_avc420_metablock(struct stream *s, short *rrects, int rcount, int widt
     int index;
     int x, y, cx, cy;
     struct xrdp_enc_rect rect;
-    const int qp = 22; // Default set by Microsoft.
-    const int r = 0; // Required to be 0.
-    const int p = 0; // Progressively encoded flag.
+    const uint8_t qp = 22; // Default set by Microsoft.
+    const uint8_t r = 0; // Required to be 0.
+    const uint8_t p = 0; // Progressively encoded flag.
     int qpVal = 0;
-    qpVal = qp & 0x3F;
-    qpVal = (r & 1) << 6;
-    qpVal = (p & 1) << 7;
+    qpVal |= qp & 0x3F;
+    qpVal |= (r & 1) << 6;
+    qpVal |= (p & 1) << 7;
 
     out_uint32_le(s, rcount); /* numRegionRects */
     for (index = 0; index < rcount; index++)
