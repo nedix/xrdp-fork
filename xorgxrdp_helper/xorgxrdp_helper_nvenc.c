@@ -236,12 +236,14 @@ xorgxrdp_helper_nvenc_create_encoder(int width, int height, int tex,
         encCfg.rcParams.constQP.qpIntra = XH_NVENV_DEFAULT_QP;
         rc_set = 1;
     }
-
+    encCfg.rcParams.cbQPIndexOffset = -1;
     encCfg.encodeCodecConfig.h264Config.chromaFormatIDC = 1;
     encCfg.encodeCodecConfig.h264Config.idrPeriod = NVENC_INFINITE_GOPLENGTH;
     encCfg.encodeCodecConfig.h264Config.repeatSPSPPS = 1;
     encCfg.encodeCodecConfig.h264Config.disableSPSPPS = 0;
     encCfg.encodeCodecConfig.h264Config.maxNumRefFrames = 1;
+    encCfg.encodeCodecConfig.h264Config.sliceMode = 0;
+    encCfg.encodeCodecConfig.h264Config.sliceModeData = 0;
     encCfg.encodeCodecConfig.h264Config.outputAUD = 1;
     // encCfg.encodeCodecConfig.h264Config.outputBufferingPeriodSEI = 1;
     // encCfg.encodeCodecConfig.h264Config.outputPictureTimingSEI = 1;
@@ -367,7 +369,7 @@ xorgxrdp_helper_nvenc_encode(struct enc_info *ei, int tex,
     }
     else
     {
-        picParams.pictureType = NV_ENC_PIC_TYPE_P;
+        picParams.pictureType = NV_ENC_PIC_TYPE_NONREF_P;
         picParams.encodePicFlags = 0;
     }
     nv_error = g_enc_funcs.nvEncEncodePicture(ei->enc, &picParams);
