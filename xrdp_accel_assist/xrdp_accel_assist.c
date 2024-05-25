@@ -899,9 +899,9 @@ xrdp_accel_assist_setup_log(void)
     {
         get_display_num_from_display(display_text);
     }
-    g_snprintf(log_file, 255, "%s/xrdp_accel_assist.%d.log", log_path,
+    g_snprintf(log_file, 255, "%s/xrdp-accel-assist.%d.log", log_path,
                g_display_num);
-    g_writeln("xrdp_accel_assist::xrdp_accel_assist_setup_log: using "
+    g_writeln("xrdp-accel-assist::xrdp_accel_assist_setup_log: using "
               "log file [%s]", log_file);
     if (g_file_exist(log_file))
     {
