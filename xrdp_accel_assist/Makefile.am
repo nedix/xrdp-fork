@@ -10,7 +10,7 @@ if XRDP_NVENC
 AM_CPPFLAGS += -DXRDP_NVENC
 AM_CPPFLAGS += $(XRDP_NVENC_CFLAGS)
 XRDP_EXTRA_LIBS += $(XRDP_NVENC_LIBS)
-XRDP_EXTRA_SOURCES += xrdp_accel_assist_nvenc.c xrdp_accel_assist_nvenc.h encoder_headers/nvEncodeAPI.h
+XRDP_EXTRA_SOURCES += xrdp_accel_assist_nvenc.c xrdp_accel_assist_nvenc.h encoder_headers/nvEncodeAPI_11_1.h
 endif
 
 if XRDP_YAMI
@@ -20,8 +20,8 @@ XRDP_EXTRA_LIBS += $(XRDP_YAMI_LIBS)
 XRDP_EXTRA_SOURCES += xrdp_accel_assist_yami.c xrdp_accel_assist_yami.h encoder_headers/yami_inf.h
 endif
 
-bin_PROGRAMS = \
-  xrdp_accel_assist
+pkglibexec_PROGRAMS = \
+  xrdp-accel-assist
 
 xrdp_accel_assist_SOURCES = \
   xrdp_accel_assist.c \
