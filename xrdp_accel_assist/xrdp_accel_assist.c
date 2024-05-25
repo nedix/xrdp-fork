@@ -996,7 +996,7 @@ main(int argc, char **argv)
     {
         robj_count = 0;
         wobj_count = 0;
-        timeout = 0;
+        timeout = -1;
         error = trans_get_wait_objs_rw(xi.xorg_trans, robjs, &robj_count,
                                        wobjs, &wobj_count, &timeout);
         if (error != 0)
