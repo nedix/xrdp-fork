@@ -162,8 +162,11 @@ gfx_wiretosurface1(struct xorgxrdp_info *xi, struct stream *s)
     in_uint16_le(s, height);
     final_pointer = s->p;
 
+    (void)left;
+    (void)top;
+
     cdata_bytes = GFX_MAP_SIZE;
-    rv = xrdp_accel_assist_x11_encode_pixmap(left, top,
+    rv = xrdp_accel_assist_x11_encode_pixmap(0, 0,
                                              width, height, surface_id,
                                              num_rects_c, crects,
                                              addr, &cdata_bytes);
