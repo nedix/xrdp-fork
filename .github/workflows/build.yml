@@ -20,21 +20,21 @@ jobs:
           - CC: gcc
             feature_set: min
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: false
             DISTCHECK: false
 
           - CC: g++
             feature_set: min
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: false
             DISTCHECK: false
 
           - CC: clang
             feature_set: min
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: false
             DISTCHECK: false
 
@@ -42,21 +42,21 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: true
             DISTCHECK: true
 
           - CC: g++
             feature_set: max
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: false
             DISTCHECK: false
 
           - CC: clang
             feature_set: max
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: true
             DISTCHECK: true
 
@@ -76,7 +76,7 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: amd64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: true
             DISTCHECK: false
             name_extra: and DEBUG
@@ -86,7 +86,7 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: i386
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: true
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
@@ -96,7 +96,7 @@ jobs:
           - CC: g++
             feature_set: max
             arch: i386
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: false
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
@@ -106,7 +106,7 @@ jobs:
           - CC: clang
             feature_set: max
             arch: i386
-            os: ubuntu-latest
+            os: ubuntu-22.04
             unittests: true
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
@@ -175,7 +175,7 @@ jobs:
 
   cppcheck:
     name: cppcheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       CC: gcc
       # This is required to use a version of cppcheck other than that
@@ -204,7 +204,7 @@ jobs:
 
   code_formatting_check:
     name: code formatting check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       CC: gcc
       # This is required to use a version of astyle other than that
