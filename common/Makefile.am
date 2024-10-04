@@ -30,6 +30,22 @@ AM_CPPFLAGS = \
   -DXRDP_PID_PATH=\"${localstatedir}/run\" \
   -DXRDP_LOG_PATH=\"${localstatedir}/log\"
 
+if XRDP_NVENC
+AM_CPPFLAGS += -DXRDP_NVENC
+else
+if XRDP_VANILLA_NVIDIA_CODEC
+AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
+endif
+endif
+
+if XRDP_NVENC
+AM_CPPFLAGS += -DXRDP_NVENC
+else
+if XRDP_VANILLA_NVIDIA_CODEC
+AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
+endif
+endif
+
 # -no-suppress is an automake-specific flag which is needed
 # to prevent us missing compiler errors in some circumstances
 # (see https://github.com/neutrinolabs/xrdp/pull/1843 )

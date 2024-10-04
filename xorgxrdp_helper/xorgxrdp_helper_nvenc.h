@@ -1,7 +1,7 @@
 /**
  * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright (C) Jay Sorg 2016
+ * Copyright (C) Jay Sorg 2022
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,23 +14,20 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- * x264 Encoder
  */
 
-#ifndef _XRDP_ENCODER_X264_H
-#define _XRDP_ENCODER_X264_H
+#ifndef _XORGXRDP_HELPER_NVENC_H
+#define _XORGXRDP_HELPER_NVENC_H
 
-#include "arch.h"
-
-void *
-xrdp_encoder_x264_create(void);
 int
-xrdp_encoder_x264_delete(void *handle);
+xorgxrdp_helper_nvenc_init(void);
 int
-xrdp_encoder_x264_encode(void *handle, int session,
-                         int width, int height, int format, const char *data,
-                         char *cdata, int *cdata_bytes);
+xorgxrdp_helper_nvenc_create_encoder(int width, int height, int tex,
+                                     int tex_format, struct enc_info **ei);
+int
+xorgxrdp_helper_nvenc_delete_encoder(struct enc_info *ei);
+enum encoder_result
+xorgxrdp_helper_nvenc_encode(struct enc_info *ei, int tex,
+                             void *cdata, int *cdata_bytes);
 
 #endif
-
