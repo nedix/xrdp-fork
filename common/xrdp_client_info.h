@@ -67,32 +67,6 @@ struct display_size_description
     unsigned int session_height;
 };
 
-enum client_resize_mode
-{
-    CRMODE_NONE,
-    CRMODE_SINGLE_SCREEN,
-    CRMODE_MULTI_SCREEN
-};
-
-enum xrdp_capture_code
-{
-    CC_SIMPLE       = 0,
-    CC_SUF_A16      = 1,
-    CC_SUF_RFX      = 2,
-    CC_SUF_A2       = 3,
-    CC_GFX_PRO      = 4,
-    CC_GFX_A2       = 5
-};
-
-/**
- * Type describing Unicode input state
- */
-enum unicode_input_state
-{
-    UIS_UNSUPPORTED = 0, ///< Client does not support Unicode
-    UIS_SUPPORTED,       ///< Client supports Unicode, but it's not active
-    UIS_ACTIVE           ///< Unicode input is active
-};
 /**
  * Information about the xrdp client
  *
@@ -189,7 +163,7 @@ struct xrdp_client_info
     int mcs_early_capability_flags;
 
     int max_fastpath_frag_bytes;
-    int pad0; /* unused */
+    int capture_code;
     int capture_format;
 
     char certificate[1024];
@@ -200,11 +174,6 @@ struct xrdp_client_info
     char layout[16];
     char variant[16];
     char options[256];
-    char xkb_rules[32];
-    // A few x11 keycodes are needed by the xup module
-    int x11_keycode_caps_lock;
-    int x11_keycode_num_lock;
-    int x11_keycode_scroll_lock;
 
     /* ==================================================================== */
     /* Private to xrdp below this line */
@@ -230,9 +199,7 @@ struct xrdp_client_info
     int no_orders_supported;
     int use_cache_glyph_v2;
     int rail_enable;
-    // Mask of reasons why output may be suppressed
-    // (see enum suppress_output_reason)
-    unsigned int suppress_output_mask;
+    int suppress_output;
 
     int enable_token_login;
     char domain_user_separator[16];
@@ -246,34 +213,19 @@ struct xrdp_client_info
      * data */
     unsigned int session_physical_width; /* in mm */
     unsigned int session_physical_height; /* in mm */
-
-    int large_pointer_support_flags;
     int gfx;
-
-    // Can we resize the desktop by using a Deactivation-Reactivation Sequence?
-    enum client_resize_mode client_resize_mode;
-
-    enum unicode_input_state unicode_input_support;
-    enum xrdp_capture_code capture_code;
 };
 
-enum xrdp_encoder_flags
-{
+enum xrdp_encoder_flags {
     NONE                                   = 0,
     ENCODE_COMPLETE                        = 1 << 0,
-    GFX_PROGRESSIVE_RFX                    = 1 << 1,
-    GFX_H264                               = 1 << 2,
-    KEY_FRAME_REQUESTED                    = 1 << 3
+    CONTAINS_DUAL_FRAME_AVC444             = 1 << 1,
+    CONTAINS_SINGLE_FRAME_AVC444_YUV420    = 1 << 2,
+    CONTAINS_SINGLE_FRAME_AVC444_CHROMA420 = 1 << 3,
+    CONTAINS_KEY_FRAME                     = 1 << 4
 };
 
-/*
- * Return true if output is suppressed for a particular reason
- */
-#define OUTPUT_SUPPRESSED_FOR_REASON(ci,reason) \
-    (((ci)->suppress_output_mask & (unsigned int)reason) != 0)
-
 /* yyyymmdd of last incompatible change to xrdp_client_info */
-/* also used for changes to all the xrdp installed headers */
-#define CLIENT_INFO_CURRENT_VERSION 20240805
+#define CLIENT_INFO_CURRENT_VERSION 20230520
 
 #endif
