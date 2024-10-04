@@ -32,18 +32,6 @@ AM_CPPFLAGS = \
 
 if XRDP_NVENC
 AM_CPPFLAGS += -DXRDP_NVENC
-else
-if XRDP_VANILLA_NVIDIA_CODEC
-AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
-endif
-endif
-
-if XRDP_NVENC
-AM_CPPFLAGS += -DXRDP_NVENC
-else
-if XRDP_VANILLA_NVIDIA_CODEC
-AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
-endif
 endif
 
 # -no-suppress is an automake-specific flag which is needed
