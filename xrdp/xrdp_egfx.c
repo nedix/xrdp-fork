@@ -42,6 +42,19 @@
 #include "xrdp_channel.h"
 #include "xrdp_mm.h"
 #include <limits.h>
+#include <time.h>
+
+typedef struct s_SYSTEMTIME
+{
+	uint16_t wYear;
+	uint16_t wMonth;
+	uint16_t wDayOfWeek;
+	uint16_t wDay;
+	uint16_t wHour;
+	uint16_t wMinute;
+	uint16_t wSecond;
+	uint16_t wMilliseconds;
+} SYSTEMTIME, *PSYSTEMTIME, *LPSYSTEMTIME;
 
 #define MAX_PART_SIZE 0xFFFF
 #define PACKET_COMPR_TYPE_RDP8 0x04 /* MS-RDPEGFX 2.2.5.3 */
@@ -356,11 +369,40 @@ xrdp_egfx_send_surface_to_surface(struct xrdp_egfx *egfx, int src_surface_id,
     return error;
 }
 
+void GetSystemTime(LPSYSTEMTIME lpSystemTime)
+{
+	time_t ct = 0;
+	struct tm tres;
+	struct tm* stm = NULL;
+	uint16_t wMilliseconds = 0;
+	ct = time(NULL);
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return;
+    }
+	wMilliseconds = (uint16_t)(ts.tv_nsec / 1000000 % 1000);
+	stm = gmtime_r(&ct, &tres);
+	memset(lpSystemTime, 0, sizeof(SYSTEMTIME));
+
+	if (stm)
+	{
+		lpSystemTime->wYear = (uint16_t)(stm->tm_year + 1900);
+		lpSystemTime->wMonth = (uint16_t)(stm->tm_mon + 1);
+		lpSystemTime->wDayOfWeek = (uint16_t)stm->tm_wday;
+		lpSystemTime->wDay = (uint16_t)stm->tm_mday;
+		lpSystemTime->wHour = (uint16_t)stm->tm_hour;
+		lpSystemTime->wMinute = (uint16_t)stm->tm_min;
+		lpSystemTime->wSecond = (uint16_t)stm->tm_sec;
+		lpSystemTime->wMilliseconds = wMilliseconds;
+	}
+}
+
 /******************************************************************************/
 struct stream *
 xrdp_egfx_frame_start(struct xrdp_egfx_bulk *bulk, int frame_id, int timestamp)
 {
     int bytes;
+    SYSTEMTIME system_time;
     struct stream *s;
 
     LOG(LOG_LEVEL_TRACE, "xrdp_egfx_frame_start:");
@@ -374,6 +416,14 @@ xrdp_egfx_frame_start(struct xrdp_egfx_bulk *bulk, int frame_id, int timestamp)
     out_uint16_le(s, XR_RDPGFX_CMDID_STARTFRAME); /* cmdId */
     out_uint16_le(s, 0); /* flags = 0 */
     s_push_layer(s, iso_hdr, 4); /* pduLength, set later */
+    if (timestamp == 0) 
+    {
+        GetSystemTime(&system_time);
+        timestamp = system_time.wHour << 22 |
+                    system_time.wMinute << 16 |
+                    system_time.wSecond << 10 |
+                    system_time.wMilliseconds;
+    }
     out_uint32_le(s, timestamp);
     out_uint32_le(s, frame_id);
     s_mark_end(s);
@@ -1072,7 +1122,7 @@ xrdp_egfx_create(struct xrdp_mm *mm, struct xrdp_egfx **egfx)
     LOG(LOG_LEVEL_INFO, "xrdp_egfx_create: error %d channel_id %d",
         error, self->channel_id);
     self->session = process->session;
-    self->surface_id = 0;
+    self->surface_id = 1;
     *egfx = self;
     return 0;
 }
