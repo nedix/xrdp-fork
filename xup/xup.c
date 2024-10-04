@@ -26,13 +26,10 @@
 #include "log.h"
 #include "trans.h"
 #include "string_calls.h"
-#include "scancode.h"
 
 static int
-send_server_monitor_update(struct mod *v, struct stream *s,
-                           int width, int height,
-                           int num_monitors,
-                           const struct monitor_info *monitors);
+send_server_monitor_resize(
+    struct mod *mod, struct stream *s, int width, int height, int bpp);
 
 static int
 send_server_monitor_full_invalidate(
@@ -53,7 +50,7 @@ lib_send_copy(struct mod *mod, struct stream *s)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_start(struct mod *mod, int w, int h, int bpp)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE, "in lib_mod_start");
@@ -148,7 +145,7 @@ lib_data_in(struct trans *trans)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_connect(struct mod *mod)
 {
     int error;
@@ -170,26 +167,6 @@ lib_mod_connect(struct mod *mod)
                         " bpp rdp connections", 0);
         return 1;
     }
-
-    // This is a good place to finalise any parameters that need to
-    // be set.
-    //
-    // Load the XKB layout
-    if (mod->keycode_set[0] != '\0')
-    {
-        if (scancode_set_keycode_set(mod->keycode_set) == 0)
-        {
-            LOG(LOG_LEVEL_INFO, "Loaded '%s' keycode set", mod->keycode_set);
-        }
-        else
-        {
-            LOG(LOG_LEVEL_WARNING, "Unable to load '%s' keycode set",
-                mod->keycode_set);
-        }
-    }
-    mod->server_init_xkb_layout(mod, &(mod->client_info));
-    LOG(LOG_LEVEL_INFO, "XKB rules '%s' will be used by the module",
-        mod->client_info.xkb_rules);
 
     make_stream(s);
     g_sprintf(con_port, "%s", mod->port);
@@ -249,6 +226,13 @@ lib_mod_connect(struct mod *mod)
 
     if (error == 0)
     {
+        /* send screen size message */
+        error = send_server_monitor_resize(
+                    mod, s, mod->width, mod->height, mod->bpp);
+    }
+
+    if (error == 0)
+    {
         error = send_server_monitor_full_invalidate(
                     mod, s, mod->width, mod->height);
     }
@@ -278,7 +262,7 @@ lib_mod_connect(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
               tbus param3, tbus param4)
 {
@@ -286,7 +270,6 @@ lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
     int len;
     int key;
     int rv;
-    int scancode;
 
     LOG_DEVEL(LOG_LEVEL_TRACE, "in lib_mod_event");
     make_stream(s);
@@ -328,12 +311,6 @@ lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
                 mod->shift_state = msg == 15;
             }
         }
-
-        /* xup doesn't need the Unicode character mapping in param1. Send
-         * the X11 scancode instead, so xorgxrdp doesn't have to do this
-         * work again */
-        scancode = SCANCODE_FROM_KBD_EVENT(param3, param4);
-        param1 = scancode_to_x11_keycode(scancode);
     }
 
     init_stream(s, 8192);
@@ -1250,217 +1227,12 @@ process_server_paint_rect_shmem_ex(struct mod *amod, struct stream *s)
         rv = 1;
     }
 
+    //g_writeln("frame_id %d", frame_id);
+    //send_paint_rect_ex_ack(amod, flags, frame_id);
+
     g_free(lcrects);
     g_free(ldrects);
 
-    return rv;
-}
-
-/******************************************************************************/
-/* return error */
-static int
-process_server_egfx_shmfd(struct mod *amod, struct stream *s)
-{
-    char *data;
-    char *cmd;
-    int rv;
-    int cmd_bytes;
-    int shmem_bytes;
-    int fd;
-    int recv_bytes;
-    unsigned int num_fds;
-    void *shmem_ptr;
-    char msg[4];
-
-    rv = 0;
-    in_uint32_le(s, cmd_bytes);
-    in_uint8p(s, cmd, cmd_bytes);
-    in_uint32_le(s, shmem_bytes);
-    if (shmem_bytes == 0)
-    {
-        return amod->server_egfx_cmd(amod, cmd, cmd_bytes, NULL, 0);
-    }
-    fd = -1;
-    num_fds = -1;
-    if (g_tcp_can_recv(amod->trans->sck, 5000) == 0)
-    {
-        return 1;
-    }
-    recv_bytes = g_sck_recv_fd_set(amod->trans->sck, msg, 4, &fd, 1, &num_fds);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_egfx_shmfd: "
-              "g_sck_recv_fd_set rv %d fd %d", recv_bytes, fd);
-    if (recv_bytes == 4)
-    {
-        if (num_fds == 1)
-        {
-            if (g_file_map(fd, 1, 0, shmem_bytes, &shmem_ptr) == 0)
-            {
-                /* we give up ownership of shmem_ptr
-                   will get cleaned up in server_egfx_cmd or
-                   xrdp_mm_process_enc_done(gfx) */
-                data = (char *) shmem_ptr;
-                rv = amod->server_egfx_cmd(amod, cmd, cmd_bytes,
-                                           data, shmem_bytes);
-            }
-            g_file_close(fd);
-        }
-    }
-    return rv;
-}
-
-/******************************************************************************/
-/* return error */
-static int
-process_server_set_pointer_shmfd(struct mod *amod, struct stream *s)
-{
-    int rv;
-    int x;
-    int y;
-    int bpp;
-    int Bpp;
-    int width;
-    int height;
-    int fd;
-    int recv_bytes;
-    int shmembytes;
-    unsigned int num_fds;
-    void *shmemptr;
-    char *cur_data;
-    char *cur_mask;
-    char msg[4];
-
-    rv = 0;
-    in_sint16_le(s, x);
-    in_sint16_le(s, y);
-    in_uint16_le(s, bpp);
-    in_uint16_le(s, width);
-    in_uint16_le(s, height);
-    fd = -1;
-    num_fds = -1;
-    if (g_tcp_can_recv(amod->trans->sck, 5000) == 0)
-    {
-        return 1;
-    }
-    recv_bytes = g_sck_recv_fd_set(amod->trans->sck, msg, 4, &fd, 1, &num_fds);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_set_pointer_shmfd: "
-              "g_sck_recv_fd_set rv %d fd %d", recv_bytes, fd);
-    if (recv_bytes == 4)
-    {
-        if (num_fds == 1)
-        {
-            Bpp = (bpp == 0) ? 3 : (bpp + 7) / 8;
-            shmembytes = width * height * Bpp + width * height / 8;
-            if (g_file_map(fd, 1, 0, shmembytes, &shmemptr) == 0)
-            {
-                cur_data = (char *)shmemptr;
-                cur_mask = cur_data + width * height * Bpp;
-                rv = amod->server_set_pointer_large(amod, x, y,
-                                                    cur_data, cur_mask,
-                                                    bpp, width, height);
-                g_munmap(shmemptr, shmembytes);
-            }
-            g_file_close(fd);
-        }
-    }
-    return rv;
-}
-
-/******************************************************************************/
-/* return error */
-static int
-process_server_paint_rect_shmfd(struct mod *amod, struct stream *s)
-{
-    int num_drects;
-    int num_crects;
-    int flags;
-    int frame_id;
-    int shmem_bytes;
-    int shmem_offset;
-    int left;
-    int top;
-    int width;
-    int height;
-    int index;
-    int rv;
-    int16_t *ldrects;
-    int16_t *ldrects1;
-    int16_t *lcrects;
-    int16_t *lcrects1;
-    char *bmpdata;
-    int fd;
-    int recv_bytes;
-    unsigned int num_fds;
-    void *shmem_ptr;
-    char msg[4];
-
-    /* dirty pixels */
-    in_uint16_le(s, num_drects);
-    ldrects = g_new(int16_t, 2 * 4 * num_drects);
-    ldrects1 = ldrects;
-    for (index = 0; index < num_drects; index++)
-    {
-        in_sint16_le(s, ldrects1[0]);
-        in_sint16_le(s, ldrects1[1]);
-        in_sint16_le(s, ldrects1[2]);
-        in_sint16_le(s, ldrects1[3]);
-        ldrects1 += 4;
-    }
-
-    /* copied pixels */
-    in_uint16_le(s, num_crects);
-    lcrects = g_new(int16_t, 2 * 4 * num_crects);
-    lcrects1 = lcrects;
-    for (index = 0; index < num_crects; index++)
-    {
-        in_sint16_le(s, lcrects1[0]);
-        in_sint16_le(s, lcrects1[1]);
-        in_sint16_le(s, lcrects1[2]);
-        in_sint16_le(s, lcrects1[3]);
-        lcrects1 += 4;
-    }
-
-    in_uint32_le(s, flags);
-    in_uint32_le(s, frame_id);
-    in_uint32_le(s, shmem_bytes);
-    in_uint32_le(s, shmem_offset);
-
-    in_uint16_le(s, left);
-    in_uint16_le(s, top);
-    in_uint16_le(s, width);
-    in_uint16_le(s, height);
-
-    if (g_tcp_can_recv(amod->trans->sck, 5000) == 0)
-    {
-        g_free(ldrects);
-        g_free(lcrects);
-        return 1;
-    }
-    rv = 1;
-    recv_bytes = g_sck_recv_fd_set(amod->trans->sck, msg, 4, &fd, 1, &num_fds);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_paint_rect_shmfd: "
-              "g_sck_recv_fd_set rv %d fd %d", recv_bytes, fd);
-    if (recv_bytes == 4)
-    {
-        if (num_fds == 1)
-        {
-            if (g_file_map(fd, 1, 0, shmem_bytes, &shmem_ptr) == 0)
-            {
-                bmpdata = (char *)shmem_ptr;
-                bmpdata += shmem_offset;
-                /* we give up ownership of shmem_ptr
-                   will get cleaned up in server_paint_rects_ex or
-                   xrdp_mm_process_enc_done(rfx, gfx) */
-                rv = amod->server_paint_rects_ex(amod, num_drects, ldrects,
-                                                 num_crects, lcrects, bmpdata,
-                                                 left, top, width, height,
-                                                 flags, frame_id,
-                                                 shmem_ptr, shmem_bytes);
-            }
-            g_file_close(fd);
-        }
-    }
-    g_free(ldrects);
-    g_free(lcrects);
     return rv;
 }
 
@@ -1489,30 +1261,33 @@ send_server_version_message(struct mod *mod, struct stream *s)
 /******************************************************************************/
 /* return error */
 static int
-send_server_monitor_update(struct mod *mod, struct stream *s,
-                           int width, int height,
-                           int num_monitors,
-                           const struct monitor_info *monitors)
+send_server_monitor_resize(
+    struct mod *mod, struct stream *s, int width, int height, int bpp)
 {
-    /* send monitor update message */
+    /* send screen size message */
     init_stream(s, 8192);
     s_push_layer(s, iso_hdr, 4);
     out_uint16_le(s, 103);
-    out_uint32_le(s, 302);
+    out_uint32_le(s, 300);
     out_uint32_le(s, width);
     out_uint32_le(s, height);
-    out_uint32_le(s, num_monitors);
+    /*
+        TODO: The bpp here is only necessary for initial creation. We should
+        modify XUP to require this only on server initialization, but not on
+        resize. Microsoft's RDP protocol does not support changing
+        the bpp on resize.
+    */
+    out_uint32_le(s, bpp);
     out_uint32_le(s, 0);
-    out_uint8a(s, monitors, sizeof(monitors[0]) * num_monitors);
     s_mark_end(s);
     int len = (int)(s->end - s->data);
     s_pop_layer(s, iso_hdr);
     out_uint32_le(s, len);
     int rv = lib_send_copy(mod, s);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "send_server_monitor_update:"
-              " sent monitor updsate message with following properties to"
-              " xorgxrdp backend width=%d, height=%d, num=%d, return value=%d",
-              width, height, num_monitors, rv);
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "send_server_monitor_resize:"
+              " sent resize message with following properties to"
+              " xorgxrdp backend width=%d, height=%d, bpp=%d, return value=%d",
+              width, height, bpp, rv);
     return rv;
 }
 
@@ -1562,16 +1337,12 @@ lib_send_server_version_message(struct mod *mod)
 /******************************************************************************/
 /* return error */
 static int
-lib_send_server_monitor_resize(struct mod *mod, int width, int height,
-                               int num_monitors,
-                               const struct monitor_info *monitors,
-                               int *in_progress)
+lib_send_server_monitor_resize(struct mod *mod, int width, int height)
 {
+    /* send screen size message */
     struct stream *s;
     make_stream(s);
-    int rv = send_server_monitor_update(mod, s, width, height,
-                                        num_monitors, monitors);
-    *in_progress = (rv == 0);
+    int rv = send_server_monitor_resize(mod, s, width, height, mod->bpp);
     free_stream(s);
     return rv;
 }
@@ -1596,7 +1367,7 @@ lib_mod_process_orders(struct mod *mod, int type, struct stream *s)
 {
     int rv;
 
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "lib_mod_process_orders: type %d", type);
+    LOG_DEVEL(LOG_LEVEL_INFO, "lib_mod_process_orders: type %d", type);
     rv = 0;
     switch (type)
     {
@@ -1690,15 +1461,6 @@ lib_mod_process_orders(struct mod *mod, int type, struct stream *s)
         case 61: /* server_paint_rect_shmem_ex */
             rv = process_server_paint_rect_shmem_ex(mod, s);
             break;
-        case 62:
-            rv = process_server_egfx_shmfd(mod, s);
-            break;
-        case 63: /* server_set_pointer_shmfd */
-            rv = process_server_set_pointer_shmfd(mod, s);
-            break;
-        case 64: /* server_paint_rect_shmfd */
-            rv = process_server_paint_rect_shmfd(mod, s);
-            break;
         default:
             LOG_DEVEL(LOG_LEVEL_WARNING,
                       "lib_mod_process_orders: unknown order type %d", type);
@@ -1746,17 +1508,20 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
 
     int width;
     int height;
+    int magic;
+    int con_id;
+    int mon_id;
 
-    LOG_DEVEL(LOG_LEVEL_TRACE, "lib_mod_process_message:");
+    LOG_DEVEL(LOG_LEVEL_INFO, "lib_mod_process_message:");
     in_uint16_le(s, type);
     in_uint16_le(s, num_orders);
     in_uint32_le(s, len);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "lib_mod_process_message: type %d", type);
+    LOG_DEVEL(LOG_LEVEL_INFO, "lib_mod_process_message: type %d", type);
 
     rv = 0;
     if (type == 1) /* original order list */
     {
-        for (index = 0; index < num_orders; ++index)
+        for (index = 0; index < num_orders; index++)
         {
             in_uint16_le(s, type);
             rv = lib_mod_process_orders(mod, type, s);
@@ -1792,8 +1557,7 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
     }
     else if (type == 3) /* order list with len after type */
     {
-        LOG_DEVEL(LOG_LEVEL_INFO,
-                  "lib_mod_process_message: type 3 len %d", len);
+        LOG_DEVEL(LOG_LEVEL_INFO, "lib_mod_process_message: type 3 len %d", len);
         for (index = 0; index < num_orders; index++)
         {
             phold = s->p;
@@ -1809,24 +1573,41 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
             s->p = phold + len;
         }
     }
-    else if (type == 100) // metadata commands.
+    else if (type == 100) // xorgxrdp_helper commands.
     {
         LOG_DEVEL(LOG_LEVEL_INFO,
                   "lib_mod_process_message: type 100 len %d", len);
-        for (index = 0; index < num_orders; ++index)
+        for (index = 0; index < num_orders; index++)
         {
             phold = s->p;
             in_uint16_le(s, type);
             in_uint16_le(s, len);
             switch (type)
             {
-                case 3: // memory allocation complete
+                case 1: // xorgxrdp_helper_x11_delete_all_pixmaps
+                    // No-op for now.
+                    break;
+                case 2: // xorgxrdp_helper_x11_create_pixmap
+                    in_uint16_le(s, width);
+                    in_uint16_le(s, height);
+                    in_uint32_le(s, magic);
+                    in_uint32_le(s, con_id);
+                    in_uint32_le(s, mon_id);
+
+                    LOG(LOG_LEVEL_INFO, "Received"
+                        " xorgxrdp_helper_x11_create_pixmap command."
+                        " width: %d, height: %d, magic: %d, con_id %d,"
+                        " mon_id %d",
+                        width, height, magic, con_id, mon_id);
+                    rv = mod->server_reset(mod, width, height, 0);
+                    break;
+                case 3:
                     in_uint16_le(s, width);
                     in_uint16_le(s, height);
                     LOG(LOG_LEVEL_INFO, "Received memory_allocation_complete"
                         " command. width: %d, height: %d",
                         width, height);
-                    rv = mod->server_monitor_resize_done(mod);
+                    rv = mod->server_reset(mod, width, height, 0);
                     break;
             }
             s->p = phold + len;
@@ -1842,7 +1623,7 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_signal(struct mod *mod)
 {
     // no-op
@@ -1851,7 +1632,7 @@ lib_mod_signal(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_end(struct mod *mod)
 {
     if (mod->screen_shmem_pixels != 0)
@@ -1864,7 +1645,7 @@ lib_mod_end(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 {
     if (g_strcasecmp(name, "username") == 0)
@@ -1883,10 +1664,6 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
     {
         g_strncpy(mod->port, value, 255);
     }
-    else if (g_strcasecmp(name, "keycode_set") == 0)
-    {
-        g_snprintf(mod->keycode_set, sizeof(mod->keycode_set), "%s", value);
-    }
     else if (g_strcasecmp(name, "client_info") == 0)
     {
         g_memcpy(&(mod->client_info), value, sizeof(mod->client_info));
@@ -1897,7 +1674,7 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_get_wait_objs(struct mod *mod, tbus *read_objs, int *rcount,
                       tbus *write_objs, int *wcount, int *timeout)
 {
@@ -1914,7 +1691,7 @@ lib_mod_get_wait_objs(struct mod *mod, tbus *read_objs, int *rcount,
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_check_wait_objs(struct mod *mod)
 {
     int rv;
@@ -1925,10 +1702,6 @@ lib_mod_check_wait_objs(struct mod *mod)
         if (mod->trans != 0)
         {
             rv = trans_check_wait_objs(mod->trans);
-            if (rv != 0)
-            {
-                LOG(LOG_LEVEL_ERROR, "Xorg server closed connection");
-            }
         }
     }
 
@@ -1937,7 +1710,7 @@ lib_mod_check_wait_objs(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_frame_ack(struct mod *amod, int flags, int frame_id)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE,
@@ -1948,7 +1721,7 @@ lib_mod_frame_ack(struct mod *amod, int flags, int frame_id)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_suppress_output(struct mod *amod, int suppress,
                         int left, int top, int right, int bottom)
 {

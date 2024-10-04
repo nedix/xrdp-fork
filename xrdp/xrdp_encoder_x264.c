@@ -1,7 +1,7 @@
 /**
  * xrdp: A Remote Desktop Protocol server.
  *
- * Copyright (C) Jay Sorg 2016-2024
+ * Copyright (C) Jay Sorg 2016
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,14 +27,12 @@
 #include <string.h>
 #include <inttypes.h>
 #include <x264.h>
+#include "log.h"
 
 #include "xrdp.h"
 #include "arch.h"
 #include "os_calls.h"
 #include "xrdp_encoder_x264.h"
-#include "xrdp_tconfig.h"
-
-#define X264_MAX_ENCODERS 16
 
 struct x264_encoder
 {
@@ -47,26 +45,20 @@ struct x264_encoder
 
 struct x264_global
 {
-    struct x264_encoder encoders[X264_MAX_ENCODERS];
-    struct xrdp_tconfig_gfx_x264_param x264_param[NUM_CONNECTION_TYPES];
+    struct x264_encoder encoders[16];
 };
 
 /*****************************************************************************/
 void *
 xrdp_encoder_x264_create(void)
 {
+    struct x264_global *x264 = NULL;
     LOG_DEVEL(LOG_LEVEL_TRACE, "xrdp_encoder_x264_create:");
-
-    struct x264_global *xg;
-    struct xrdp_tconfig_gfx gfxconfig;
-    xg = g_new0(struct x264_global, 1);
-    tconfig_load_gfx(GFX_CONF, &gfxconfig);
-
-    memcpy(&xg->x264_param, &gfxconfig.x264_param,
-           sizeof(struct xrdp_tconfig_gfx_x264_param) * NUM_CONNECTION_TYPES);
-
-    return xg;
-
+    x264 = (struct x264_global *) g_malloc(sizeof(struct x264_global), 1);
+    if (!x264) {
+        LOG(LOG_LEVEL_ERROR, "Failed to allocate X264 context");
+    }
+    return x264;
 }
 
 /*****************************************************************************/
@@ -77,7 +69,7 @@ xrdp_encoder_x264_delete(void *handle)
     struct x264_encoder *xe;
     int index;
 
-    if (handle == NULL)
+    if (handle == 0)
     {
         return 0;
     }
@@ -85,7 +77,7 @@ xrdp_encoder_x264_delete(void *handle)
     for (index = 0; index < 16; index++)
     {
         xe = &(xg->encoders[index]);
-        if (xe->x264_enc_han != NULL)
+        if (xe->x264_enc_han != 0)
         {
             x264_encoder_close(xe->x264_enc_han);
         }
@@ -97,12 +89,9 @@ xrdp_encoder_x264_delete(void *handle)
 
 /*****************************************************************************/
 int
-xrdp_encoder_x264_encode(void *handle, int session, int left, int top,
-                         int width, int height, int twidth, int theight,
-                         int format, const char *data,
-                         short *crects, int num_crects,
-                         char *cdata, int *cdata_bytes, int connection_type,
-                         int *flags_ptr)
+xrdp_encoder_x264_encode(void *handle, int session,
+                         int width, int height, int format, const char *data,
+                         char *cdata, int *cdata_bytes)
 {
     struct x264_global *xg;
     struct x264_encoder *xe;
@@ -112,131 +101,90 @@ xrdp_encoder_x264_encode(void *handle, int session, int left, int top,
     x264_nal_t *nals;
     int num_nals;
     int frame_size;
-    int x264_width_height;
-    int flags;
-    int x;
-    int y;
-    int cx;
-    int cy;
-    int ct; /* connection_type */
+    int frame_area;
 
     x264_picture_t pic_in;
     x264_picture_t pic_out;
 
     LOG(LOG_LEVEL_TRACE, "xrdp_encoder_x264_encode:");
-    flags = 0;
     xg = (struct x264_global *) handle;
-    xe = &(xg->encoders[session % X264_MAX_ENCODERS]);
-
-    /* validate connection type */
-    ct = connection_type;
-    if (ct > CONNECTION_TYPE_LAN || ct < CONNECTION_TYPE_MODEM)
+    xe = &(xg->encoders[session]);
+    if ((xe->x264_enc_han == 0) || (xe->width != width)
+        || (xe->height != height))
     {
-        ct = CONNECTION_TYPE_LAN;
-    }
-
-    if ((xe->x264_enc_han == NULL) ||
-            (xe->width != width) || (xe->height != height))
-    {
-        if (xe->x264_enc_han != NULL)
+        if (xe->x264_enc_han != 0)
         {
-            LOG(LOG_LEVEL_INFO, "xrdp_encoder_x264_encode: "
-                "x264_encoder_close %p", xe->x264_enc_han);
             x264_encoder_close(xe->x264_enc_han);
-            xe->x264_enc_han = NULL;
+            xe->x264_enc_han = 0;
             g_free(xe->yuvdata);
-            xe->yuvdata = NULL;
-            flags |= 2;
+            xe->yuvdata = 0;
         }
         if ((width > 0) && (height > 0))
         {
             x264_param_default_preset(&(xe->x264_params),
-                                      xg->x264_param[ct].preset,
-                                      xg->x264_param[ct].tune);
+                                      "veryfast", "zerolatency");
+            xe->x264_params.i_width = width;
+            xe->x264_params.i_height = height;
             xe->x264_params.i_threads = 1;
-            xe->x264_params.i_width = (width + 15) & ~15;
-            xe->x264_params.i_height = (height + 15) & ~15;
-            xe->x264_params.i_fps_num = xg->x264_param[ct].fps_num;
-            xe->x264_params.i_fps_den = xg->x264_param[ct].fps_den;
-            xe->x264_params.rc.i_rc_method = X264_RC_CRF;
-            xe->x264_params.rc.i_vbv_max_bitrate = xg->x264_param[ct].vbv_max_bitrate;
-            xe->x264_params.rc.i_vbv_buffer_size = xg->x264_param[ct].vbv_buffer_size;
-            x264_param_apply_profile(&(xe->x264_params),
-                                     xg->x264_param[ct].profile);
+            xe->x264_params.i_fps_num = 24;
+            xe->x264_params.i_fps_den = 1;
+            x264_param_apply_profile(&(xe->x264_params), "high");
+
             xe->x264_enc_han = x264_encoder_open(&(xe->x264_params));
-            LOG(LOG_LEVEL_INFO, "xrdp_encoder_x264_encode: "
-                "x264_encoder_open rv %p for width %d height %d",
-                xe->x264_enc_han, width, height);
-            if (xe->x264_enc_han == NULL)
+            if (xe->x264_enc_han == 0)
             {
                 return 1;
             }
-            xe->yuvdata = g_new(char, width * height * 2);
-            if (xe->yuvdata == NULL)
+            xe->yuvdata = (char *) g_malloc(width * height * 3 / 2, 0);
+            if (xe->yuvdata == 0)
             {
                 x264_encoder_close(xe->x264_enc_han);
-                xe->x264_enc_han = NULL;
+                xe->x264_enc_han = 0;
                 return 2;
             }
-            flags |= 1;
         }
         xe->width = width;
         xe->height = height;
     }
 
-    if ((data != NULL) && (xe->x264_enc_han != NULL))
+    if ((data != 0) && (xe->x264_enc_han != 0))
     {
-        x264_width_height = xe->x264_params.i_width * xe->x264_params.i_height;
-        for (index = 0; index < num_crects; index++)
+        src8 = data;
+        dst8 = xe->yuvdata;
+        for (index = 0; index < height; index++)
         {
-            src8 = data;
-            dst8 = xe->yuvdata;
-            x = crects[index * 4 + 0];
-            y = crects[index * 4 + 1];
-            cx = crects[index * 4 + 2];
-            cy = crects[index * 4 + 3];
-            LOG_DEVEL(LOG_LEVEL_INFO, "xrdp_encoder_x264_encode: x %d y %d "
-                      "cx %d cy %d", x, y, cx, cy);
-            src8 += twidth * y + x;
-            dst8 += xe->x264_params.i_width * (y - top) + (x - left);
-            for (; cy > 0; cy -= 1)
-            {
-                g_memcpy(dst8, src8, cx);
-                src8 += twidth;
-                dst8 += xe->x264_params.i_width;
-            }
+            g_memcpy(dst8, src8, width);
+            src8 += width;
+            dst8 += xe->x264_params.i_width;
         }
-        for (index = 0; index < num_crects; index++)
+
+        src8 = data;
+        src8 += width * height;
+        dst8 = xe->yuvdata;
+
+        frame_area = xe->x264_params.i_width * xe->x264_params.i_height - 1;
+        dst8 += frame_area;
+        for (index = 0; index < height; index += 2)
         {
-            src8 = data;
-            src8 += twidth * theight;
-            dst8 = xe->yuvdata;
-            dst8 += x264_width_height;
-            x = crects[index * 4 + 0];
-            y = crects[index * 4 + 1];
-            cx = crects[index * 4 + 2];
-            cy = crects[index * 4 + 3];
-            src8 += twidth * (y / 2) + x;
-            dst8 += xe->x264_params.i_width * ((y - top) / 2) + (x - left);
-            for (; cy > 0; cy -= 2)
-            {
-                g_memcpy(dst8, src8, cx);
-                src8 += twidth;
-                dst8 += xe->x264_params.i_width;
-            }
+            g_memcpy(dst8, src8, width);
+            src8 += width;
+            dst8 += xe->x264_params.i_width;
         }
+
+        pic_in.param = &xe->x264_params;
+
         g_memset(&pic_in, 0, sizeof(pic_in));
         pic_in.img.i_csp = X264_CSP_NV12;
         pic_in.img.i_plane = 2;
         pic_in.img.plane[0] = (unsigned char *) (xe->yuvdata);
-        pic_in.img.plane[1] = (unsigned char *)
-                              (xe->yuvdata + x264_width_height);
-        pic_in.img.i_stride[0] = xe->x264_params.i_width;
+        pic_in.img.plane[1] = (unsigned char *) (xe->yuvdata + frame_area);
+        pic_in.img.i_stride[0] = width;
         pic_in.img.i_stride[1] = xe->x264_params.i_width;
         num_nals = 0;
+
         frame_size = x264_encoder_encode(xe->x264_enc_han, &nals, &num_nals,
                                          &pic_in, &pic_out);
-        LOG(LOG_LEVEL_TRACE, "i_type %d", pic_out.i_type);
+
         if (frame_size < 1)
         {
             return 3;
@@ -245,12 +193,40 @@ xrdp_encoder_x264_encode(void *handle, int session, int left, int top,
         {
             return 4;
         }
-        g_memcpy(cdata, nals[0].p_payload, frame_size);
-        *cdata_bytes = frame_size;
-    }
-    if (flags_ptr != NULL)
-    {
-        *flags_ptr = flags;
+        *cdata_bytes = 0;
+        for (int i = 0; i < num_nals; ++i)
+        {
+            x264_nal_t *nal = nals + i;
+            int size = nal->i_payload;
+            uint8_t* payload = nal->p_payload;
+            char* write_location = cdata + *cdata_bytes;
+            int nalUnitType = nal->i_type;
+            LOG(LOG_LEVEL_TRACE, "NalType is %d. Format is %d", 
+                nalUnitType, format);
+            switch (nalUnitType)
+            {
+                case NAL_SPS:
+                case NAL_PPS:
+                case NAL_SLICE:
+                case NAL_SLICE_IDR:
+                    *cdata_bytes += size;
+                    if (nal->b_long_startcode)
+                    {
+                        g_memcpy(write_location, payload, size);
+                        break;
+                    }
+                    LOG(LOG_LEVEL_DEBUG, "Expanding start code %d.",
+                        nalUnitType);
+                    g_memcpy(write_location, "\x00\x00\x00\x01", 4);
+                    g_memcpy(write_location + 4, payload + 3, size - 3);
+                    *cdata_bytes += 1;
+                    break;
+                default:
+                    LOG(LOG_LEVEL_DEBUG, "Skipping NAL of type %d.",
+                        nalUnitType);
+                    continue;
+            }
+        }
     }
     return 0;
 }
