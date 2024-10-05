@@ -90,8 +90,7 @@ struct mod
     int (*mod_server_monitor_resize)(struct mod *mod,
                                      int width, int height,
                                      int num_monitors,
-                                     const struct monitor_info *monitors,
-                                     int *in_progress);
+                                     const struct monitor_info *monitors);
     int (*mod_server_monitor_full_invalidate)(struct mod *mod,
             int width, int height);
     int (*mod_server_version_message)(struct mod *mod);

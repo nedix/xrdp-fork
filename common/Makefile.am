@@ -28,10 +28,15 @@ AM_CPPFLAGS = \
   -DXRDP_SBIN_PATH=\"${sbindir}\" \
   -DXRDP_SHARE_PATH=\"${datadir}/xrdp\" \
   -DXRDP_PID_PATH=\"${localstatedir}/run\" \
-  -DXRDP_LOG_PATH=\"${localstatedir}/log\"
+  -DXRDP_LOG_PATH=\"${localstatedir}/log\" \
+  -DXRDP_SOCKET_ROOT_PATH=\"${socketdir}\"
 
 if XRDP_NVENC
 AM_CPPFLAGS += -DXRDP_NVENC
+else
+if XRDP_VANILLA_NVIDIA_CODEC
+AM_CPPFLAGS += -DXRDP_VANILLA_NVIDIA_CODEC
+endif
 endif
 
 # -no-suppress is an automake-specific flag which is needed

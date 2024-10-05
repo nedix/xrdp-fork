@@ -99,8 +99,7 @@ struct vnc
     int (*mod_server_monitor_resize)(struct vnc *v,
                                      int width, int height,
                                      int num_monitors,
-                                     const struct monitor_info *monitors,
-                                     int *in_progress);
+                                     const struct monitor_info *monitors);
     int (*mod_server_monitor_full_invalidate)(struct vnc *v,
             int width, int height);
     int (*mod_server_version_message)(struct vnc *v);

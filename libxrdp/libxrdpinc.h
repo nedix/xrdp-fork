@@ -123,7 +123,8 @@ libxrdp_send_bitmap(struct xrdp_session *session, int width, int height,
                     int bpp, char *data, int x, int y, int cx, int cy);
 int
 libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
-                     char *data, char *mask, int x, int y, int bpp);
+                     char *data, char *mask, int x, int y, int bpp,
+                     int width, int height);
 int
 libxrdp_set_pointer(struct xrdp_session *session, int cache_idx);
 int
@@ -195,7 +196,8 @@ libxrdp_orders_send_font(struct xrdp_session *session,
                          struct xrdp_font_char *font_char,
                          int font_index, int char_index);
 int
-libxrdp_reset(struct xrdp_session *session);
+libxrdp_reset(struct xrdp_session *session, unsigned int width,
+              unsigned int height, int bpp);
 int
 libxrdp_orders_send_raw_bitmap2(struct xrdp_session *session,
                                 int width, int height, int bpp, char *data,

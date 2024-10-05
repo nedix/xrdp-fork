@@ -879,10 +879,8 @@ lxrdp_server_version_message(struct mod *mod)
 static int
 lxrdp_server_monitor_resize(struct mod *mod, int width, int height,
                             int num_monitors,
-                            const struct monitor_info *monitors,
-                            int *in_progress)
+                            const struct monitor_info *monitors)
 {
-    *in_progress = 0;
     return 0;
 }
 

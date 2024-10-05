@@ -99,6 +99,13 @@ struct sockaddr_hvs
 #include "string_calls.h"
 #include "log.h"
 #include "xrdp_constants.h"
+#include "xrdp_sockets.h"
+
+/* for clearenv() */
+#if defined(_WIN32)
+#else
+extern char **environ;
+#endif
 
 #if defined(__linux__)
 #include <linux/unistd.h>
@@ -146,6 +153,28 @@ g_rm_temp_dir(void)
 }
 
 /*****************************************************************************/
+int
+g_mk_socket_path(const char *app_name)
+{
+    if (!g_directory_exist(XRDP_SOCKET_PATH))
+    {
+        if (!g_create_path(XRDP_SOCKET_PATH"/"))
+        {
+            /* if failed, still check if it got created by someone else */
+            if (!g_directory_exist(XRDP_SOCKET_PATH))
+            {
+                LOG(LOG_LEVEL_ERROR,
+                    "g_mk_socket_path: g_create_path(%s) failed",
+                    XRDP_SOCKET_PATH);
+                return 1;
+            }
+        }
+        g_chmod_hex(XRDP_SOCKET_PATH, 0x1777);
+    }
+    return 0;
+}
+
+/*****************************************************************************/
 void
 g_init(const char *app_name)
 {
@@ -154,7 +183,24 @@ g_init(const char *app_name)
 
     WSAStartup(2, &wsadata);
 #endif
-#if defined(XRDP_NVENC)
+
+    /* In order to get g_mbstowcs and g_wcstombs to work properly with
+       UTF-8 non-ASCII characters, LC_CTYPE cannot be "C" or blank.
+       To select UTF-8 encoding without specifying any countries/languages,
+       "C.UTF-8" is used but provided in few systems.
+
+       See also: https://sourceware.org/glibc/wiki/Proposals/C.UTF-8 */
+    char *lc_ctype;
+    lc_ctype = setlocale(LC_CTYPE, "C.UTF-8");
+    if (lc_ctype == NULL)
+    {
+        /* use en_US.UTF-8 instead if not available */
+        setlocale(LC_CTYPE, "en_US.UTF-8");
+    }
+
+    g_mk_socket_path(app_name);
+
+#if defined(XRDP_NVENC) || defined(XRDP_VANILLA_NVIDIA_CODEC)
     if (g_strcmp(app_name, "xrdp") == 0)
     {
         /* call cuInit() to initalize the nvidia drivers */
@@ -196,6 +242,17 @@ g_deinit(void)
     fflush(stdout);
     fflush(stderr);
     g_rm_temp_dir();
+}
+
+/*****************************************************************************/
+/* free the memory pointed to by ptr, ptr can be zero */
+void
+g_free(void *ptr)
+{
+    if (ptr != 0)
+    {
+        free(ptr);
+    }
 }
 
 /*****************************************************************************/
@@ -457,6 +514,23 @@ g_tcp_socket(void)
             option_value = 1;
             option_len = sizeof(option_value);
             if (setsockopt(rv, SOL_SOCKET, SO_REUSEADDR, (char *)&option_value,
+                           option_len) < 0)
+            {
+                LOG(LOG_LEVEL_ERROR, "g_tcp_socket: setsockopt() failed");
+            }
+        }
+    }
+
+    option_len = sizeof(option_value);
+
+    if (getsockopt(rv, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
+                   &option_len) == 0)
+    {
+        if (option_value < (1024 * 32))
+        {
+            option_value = 1024 * 32;
+            option_len = sizeof(option_value);
+            if (setsockopt(rv, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
                            option_len) < 0)
             {
                 LOG(LOG_LEVEL_ERROR, "g_tcp_socket: setsockopt() failed");
@@ -2672,7 +2746,7 @@ g_create_dir(const char *dirname)
 #if defined(_WIN32)
     return CreateDirectoryA(dirname, 0); // test this
 #else
-    return mkdir(dirname, 0777) == 0;
+    return mkdir(dirname, (mode_t) - 1) == 0;
 #endif
 }
 
@@ -2981,6 +3055,7 @@ g_execlp3(const char *a1, const char *a2, const char *a3)
         "returned errno: %d, description: %s",
         a1, args_str, g_get_errno(), g_get_strerror());
 
+    g_mk_socket_path(0);
     return rv;
 #endif
 }
@@ -3207,7 +3282,11 @@ g_fork(void)
 
     rv = fork();
 
-    if (rv == -1) /* error */
+    if (rv == 0) /* child */
+    {
+        g_mk_socket_path(0);
+    }
+    else if (rv == -1) /* error */
     {
         LOG(LOG_LEVEL_ERROR,
             "Process fork failed with errno: %d, description: %s",
@@ -3416,7 +3495,7 @@ g_waitchild(struct proc_exit_status *e)
 
     if (rv == -1)
     {
-        if (errno == EINTR)
+        if (errno == EINTR) /* signal occurred */
         {
             /* This shouldn't happen as signal handlers use SA_RESTART */
             rv = 0;

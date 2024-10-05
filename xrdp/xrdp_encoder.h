@@ -6,6 +6,12 @@
 #include "fifo.h"
 #include "xrdp_client_info.h"
 
+#define ENC_IS_BIT_SET(_flags, _bit) (((_flags) & (1 << (_bit))) != 0)
+#define ENC_SET_BIT(_flags, _bit) do { _flags |= (1 << (_bit)); } while (0)
+#define ENC_CLR_BIT(_flags, _bit) do { _flags &= ~(1 << (_bit)); } while (0)
+#define ENC_SET_BITS(_flags, _mask, _bits) \
+    do { _flags &= ~(_mask); _flags |= (_bits) & (_mask); } while (0)
+
 struct xrdp_enc_data;
 
 /* for codec mode operations */
@@ -18,12 +24,19 @@ struct xrdp_encoder
     int max_compressed_bytes;
     tbus xrdp_encoder_event_to_proc;
     tbus xrdp_encoder_event_processed;
-    tbus xrdp_encoder_term;
-    FIFO *fifo_to_proc;
-    FIFO *fifo_processed;
+    tbus xrdp_encoder_term_request;
+    tbus xrdp_encoder_term_done;
+    struct fifo *fifo_to_proc;
+    struct fifo *fifo_processed;
     tbus mutex;
     int (*process_enc)(struct xrdp_encoder *self, struct xrdp_enc_data *enc);
-    void *codec_handle;
+    void *codec_handle_jpg;
+    void *codec_handle_nvenc;
+    void *codec_handle_openh264;
+    void *codec_handle_rfx;
+    void *codec_handle_x264;
+    void *codec_handle_prfx_gfx[16];
+    void *codec_handle_h264_gfx[16];
     int frame_id_client; /* last frame id received from client */
     int frame_id_server; /* last frame id received from Xorg */
     int frame_id_server_sent;
@@ -37,21 +50,31 @@ struct xrdp_encoder
     int quant_idx_v;
 };
 
-/* used when scheduling tasks in xrdp_encoder.c */
-struct xrdp_enc_data
+/* cmd_id = 0 */
+struct xrdp_enc_surface_command
 {
     struct xrdp_mod *mod;
     int num_drects;
     int pad0;
-    short *drects;     /* 4 * num_drects */
+    short *drects;  /* 4 * num_drects */
     int num_crects;
     int pad1;
-    short *crects;     /* 4 * num_crects */
+    short *crects;  /* 4 * num_crects */
     char *data;
+    int left;
+    int top;
     int width;
     int height;
     enum xrdp_encoder_flags flags;
     int frame_id;
+};
+
+struct xrdp_enc_gfx_cmd
+{
+    char *cmd;
+    char *data;
+    int cmd_bytes;
+    int data_bytes;
 };
 
 struct xrdp_enc_rect
@@ -62,34 +85,44 @@ struct xrdp_enc_rect
     short cy;
 };
 
+struct xrdp_enc_rect calculate_bounding_box(short* boxes, int numBoxes);
+
 typedef struct xrdp_enc_data XRDP_ENC_DATA;
+
+#define ENC_DONE_FLAGS_GFX_BIT      0
+#define ENC_DONE_FLAGS_FRAME_ID_BIT 1
 
 /* used when scheduling tasks from xrdp_encoder.c */
 struct xrdp_enc_data_done
 {
-    /*
-        Possibility to return more than one stream from a single encode,
-        mainly due to AVC444v2 streams.
-        TODO: This is a pretty ugly hack, we should refactor this similarly
-        to how Ogon or FreeRDP do it.
-    */
-    int out_data_bytes1;
-    int comp_bytes1;
-    int pad_bytes1;
-    char *comp_pad_data1;
-
-    int out_data_bytes2;
-    int comp_bytes2;
-    int pad_bytes2;
-    char *comp_pad_data2;
-
-    int total_comp_bytes;
-
-    struct xrdp_enc_data *enc; /* incoming data */
+    int out_data_bytes;
+    int comp_bytes;
+    int pad_bytes;
+    char *comp_pad_data;
+    struct xrdp_enc_data *enc;
     int last; /* true is this is last message for enc */
     int continuation; /* true if this isn't the start of a frame */
     struct xrdp_enc_rect rect;
     enum xrdp_encoder_flags flags;
+    int frame_id;
+};
+
+#define ENC_FLAGS_GFX_BIT   0
+
+/* used when scheduling tasks in xrdp_encoder.c */
+struct xrdp_enc_data
+{
+    struct xrdp_mod *mod;
+    int flags; /* ENC_FLAGS_* */
+    int pad0;
+    void *shmem_ptr;
+    int shmem_bytes;
+    int pad1;
+    union _u
+    {
+        struct xrdp_enc_surface_command sc;
+        struct xrdp_enc_gfx_cmd gfx;
+    } u;
 };
 
 typedef struct xrdp_enc_data_done XRDP_ENC_DATA_DONE;

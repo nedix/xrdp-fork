@@ -9,7 +9,8 @@ dist_xrdppkgdata_SCRIPTS = \
 AM_LDFLAGS = 
 
 AM_CPPFLAGS = \
-  -I$(top_srcdir)/common
+  -I$(top_srcdir)/common \
+  -DXRDP_SOCKET_ROOT_PATH=\"${socketdir}\"
 
 xrdp_droppriv_SOURCES = xrdp-droppriv.c
 

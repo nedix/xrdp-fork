@@ -53,15 +53,16 @@ struct list;
 #define g_close_wait_obj g_delete_wait_obj
 
 int      g_rm_temp_dir(void);
+int      g_mk_socket_path(const char *app_name);
 void     g_init(const char *app_name);
 void     g_deinit(void);
-void g_printf(const char *format, ...) printflike(1, 2);
-void g_sprintf(char *dest, const char *format, ...) \
+void     g_printf(const char *format, ...) printflike(1, 2);
+void     g_sprintf(char *dest, const char *format, ...) \
 printflike(2, 3);
-int  g_snprintf(char *dest, int len, const char *format, ...) \
+int      g_snprintf(char *dest, int len, const char *format, ...) \
 printflike(3, 4);
-void g_writeln(const char *format, ...) printflike(1, 2);
-void g_write(const char *format, ...) printflike(1, 2);
+void     g_writeln(const char *format, ...) printflike(1, 2);
+void     g_write(const char *format, ...) printflike(1, 2);
 void     g_hexdump(const char *p, int len);
 int      g_getchar(void);
 int      g_tcp_set_no_delay(int sck);

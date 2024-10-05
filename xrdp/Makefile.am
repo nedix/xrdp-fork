@@ -5,15 +5,17 @@ EXTRA_DIST = \
 
 AM_CPPFLAGS = \
   -DXRDP_CFG_PATH=\"${sysconfdir}/xrdp\" \
+  -DXRDP_MODULE_PATH=\"${moduledir}\" \
+  -DXRDP_PID_PATH=\"${localstatedir}/run\" \
   -DXRDP_SBIN_PATH=\"${sbindir}\" \
   -DXRDP_SHARE_PATH=\"${datadir}/xrdp\" \
-  -DXRDP_PID_PATH=\"${localstatedir}/run\" \
-  -DXRDP_MODULE_PATH=\"${moduledir}\" \
-  -DXRDP_SOCKET_PATH=\"${socketdir}\" \
+  -DXRDP_SOCKET_ROOT_PATH=\"${socketdir}\" \
   -I$(top_builddir) \
   -I$(top_srcdir)/common \
   -I$(top_srcdir)/libipm \
   -I$(top_srcdir)/libxrdp \
+  -I$(top_srcdir)/third_party \
+  -I$(top_srcdir)/third_party/tomlc99 \
   $(IMLIB2_CFLAGS)
 
 XRDP_EXTRA_LIBS =
@@ -66,30 +68,35 @@ xrdp_SOURCES = \
   lang.c \
   xrdp.c \
   xrdp.h \
+  xrdp.ini.in \
   xrdp_bitmap.c \
-  xrdp_bitmap_load.c \
   xrdp_bitmap_common.c \
+  xrdp_bitmap_load.c \
   xrdp_cache.c \
+  xrdp_egfx.c \
+  xrdp_egfx.h \
   xrdp_encoder.c \
   xrdp_encoder.h \
   xrdp_font.c \
   xrdp_listen.c \
   xrdp_login_wnd.c \
+  xrdp_main_utils.c \
   xrdp_mm.c \
+  xrdp_mm.h \
   xrdp_painter.c \
   xrdp_process.c \
   xrdp_region.c \
+  xrdp_tconfig.c \
+  xrdp_tconfig.h \
   xrdp_types.h \
   xrdp_wm.c \
-  xrdp_egfx.c \
-  xrdp_egfx.h \
-  xrdp_main_utils.c \
   $(XRDP_EXTRA_SOURCES)
 
 xrdp_LDADD = \
   $(top_builddir)/common/libcommon.la \
   $(top_builddir)/libipm/libipm.la \
   $(top_builddir)/libxrdp/libxrdp.la \
+  $(top_builddir)/third_party/tomlc99/libtoml.la \
   $(IMLIB2_LIBS) \
   $(XRDP_EXTRA_LIBS)
 
@@ -113,8 +120,10 @@ SUFFIXES = .in
 	$(subst_verbose)$(SUBST_VARS) $< > $@
 
 dist_xrdpsysconf_DATA = \
-  xrdp.ini \
   xrdp_keyboard.ini
+
+nodist_xrdpsysconf_DATA = \
+  xrdp.ini
 
 xrdppkgdatadir=$(datadir)/xrdp
 
@@ -130,3 +139,5 @@ dist_xrdppkgdata_DATA = \
   sans-18.fv1 \
   cursor0.cur \
   cursor1.cur
+
+CLEANFILES = $(nodist_xrdpsysconf_DATA)

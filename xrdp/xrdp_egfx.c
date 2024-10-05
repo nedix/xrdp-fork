@@ -44,18 +44,6 @@
 #include <limits.h>
 #include <time.h>
 
-typedef struct s_SYSTEMTIME
-{
-	uint16_t wYear;
-	uint16_t wMonth;
-	uint16_t wDayOfWeek;
-	uint16_t wDay;
-	uint16_t wHour;
-	uint16_t wMinute;
-	uint16_t wSecond;
-	uint16_t wMilliseconds;
-} SYSTEMTIME, *PSYSTEMTIME, *LPSYSTEMTIME;
-
 #define MAX_PART_SIZE 0xFFFF
 #define PACKET_COMPR_TYPE_RDP8 0x04 /* MS-RDPEGFX 2.2.5.3 */
 
@@ -369,7 +357,8 @@ xrdp_egfx_send_surface_to_surface(struct xrdp_egfx *egfx, int src_surface_id,
     return error;
 }
 
-void GetSystemTime(LPSYSTEMTIME lpSystemTime)
+void
+xrdp_get_system_time(LPSYSTEMTIME lpSystemTime)
 {
 	time_t ct = 0;
 	struct tm tres;
@@ -418,7 +407,7 @@ xrdp_egfx_frame_start(struct xrdp_egfx_bulk *bulk, int frame_id, int timestamp)
     s_push_layer(s, iso_hdr, 4); /* pduLength, set later */
     if (timestamp == 0) 
     {
-        GetSystemTime(&system_time);
+        xrdp_get_system_time(&system_time);
         timestamp = system_time.wHour << 22 |
                     system_time.wMinute << 16 |
                     system_time.wSecond << 10 |

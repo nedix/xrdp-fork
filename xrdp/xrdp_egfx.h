@@ -140,6 +140,21 @@ struct xrdp_egfx_bulk
     int id;
 };
 
+typedef struct s_SYSTEMTIME
+{
+   uint16_t wYear;
+   uint16_t wMonth;
+   uint16_t wDayOfWeek;
+   uint16_t wDay;
+   uint16_t wHour;
+   uint16_t wMinute;
+   uint16_t wSecond;
+   uint16_t wMilliseconds;
+} SYSTEMTIME, *PSYSTEMTIME, *LPSYSTEMTIME;
+
+void
+xrdp_get_system_time(LPSYSTEMTIME lpSystemTime);
+
 int
 xrdp_egfx_send_data(struct xrdp_egfx *egfx, const char *data, int bytes);
 int

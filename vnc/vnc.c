@@ -2256,11 +2256,9 @@ lib_mod_server_version_message(struct vnc *v)
 static int
 lib_mod_server_monitor_resize(struct vnc *v, int width, int height,
                               int num_monitors,
-                              const struct monitor_info *monitors,
-                              int *in_progress)
+                              const struct monitor_info *monitors)
 {
     int error;
-    *in_progress = 0;
     init_client_layout(v, width, height, num_monitors, monitors);
 
     if ((error = resize_server_to_client_layout(v)) == 0)
@@ -2270,10 +2268,9 @@ lib_mod_server_monitor_resize(struct vnc *v, int width, int height,
         // it works around a buggy VNC server not sending an
         // ExtendedDesktopSize rectangle if the desktop change is
         // small (eg. same dimensions, but 2 monitors -> 1 monitor)
-        if (v->resize_status == VRS_WAITING_FOR_RESIZE_CONFIRM &&
-                (error = send_update_request_for_resize_status(v)) == 0)
+        if (v->resize_status == VRS_WAITING_FOR_RESIZE_CONFIRM)
         {
-            *in_progress = 1;
+            error = send_update_request_for_resize_status(v) != 0;
         }
     }
 

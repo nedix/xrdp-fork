@@ -542,15 +542,8 @@ xrdp_mm_egfx_send_planar_bitmap(struct xrdp_mm *self,
                                 struct xrdp_rect *rect,
                                 int surface_id, int x, int y);
 int
-xrdp_mm_egfx_send_planar_bitmap(struct xrdp_mm *self,
-                                struct xrdp_bitmap *bitmap,
-                                struct xrdp_rect *rect);
-int
 xrdp_mm_can_resize(struct xrdp_mm *self);
-int
-xrdp_mm_egfx_send_planar_bitmap(struct xrdp_mm *self,
-                                struct xrdp_bitmap *bitmap,
-                                struct xrdp_rect *rect);
+
 int
 xrdp_mm_can_resize(struct xrdp_mm *self);
 int

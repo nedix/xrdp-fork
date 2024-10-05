@@ -705,7 +705,8 @@ libxrdp_send_bitmap(struct xrdp_session *session, int width, int height,
 /*****************************************************************************/
 int EXPORT_CC
 libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
-                     char *data, char *mask, int x, int y, int bpp)
+                     char *data, char *mask, int x, int y, int bpp,
+                     int width, int height)
 {
     struct stream *s;
     char *p;
@@ -714,11 +715,20 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
     int i;
     int j;
     int data_bytes;
+    int mask_bytes;
 
     LOG_DEVEL(LOG_LEVEL_DEBUG, "sending cursor");
     if (bpp == 0)
     {
         bpp = 24;
+    }
+    if (width == 0)
+    {
+        width = 32;
+    }
+    if (height == 0)
+    {
+        height = 32;
     }
     /* error check */
     if ((session->client_info->pointer_flags & 1) == 0)
@@ -731,16 +741,17 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
         }
     }
 
-    if ((bpp != 16) && (bpp != 24) && (bpp != 32))
+    if ((bpp != 15) && (bpp != 16) && (bpp != 24) && (bpp != 32))
     {
         LOG(LOG_LEVEL_ERROR,
-            "Send pointer: invalid bpp value. Expected 16 or 24 or 32, "
+            "Send pointer: invalid bpp value. Expected 15, 16, 24 or 32, "
             "received %d", bpp);
         return 1;
     }
     make_stream(s);
-    init_stream(s, 8192);
-
+    data_bytes = width * height * ((bpp + 7) / 8);
+    mask_bytes = width * height / 8;
+    init_stream(s, data_bytes + mask_bytes + 8192);
     if (session->client_info->use_fast_path & 1) /* fastpath output supported */
     {
         LOG_DEVEL(LOG_LEVEL_DEBUG, "libxrdp_send_pointer: fastpath");
@@ -792,20 +803,21 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
     out_uint16_le(s, cache_idx);  /* cache_idx */
     out_uint16_le(s, x);          /* hotSpot.xPos */
     out_uint16_le(s, y);          /* hotSpot.yPos */
-    out_uint16_le(s, 32);         /* width */
-    out_uint16_le(s, 32);         /* height */
-    out_uint16_le(s, 128);        /* lengthAndMask */
+    out_uint16_le(s, width);      /* width */
+    out_uint16_le(s, height);     /* height */
+    out_uint16_le(s, mask_bytes); /* lengthAndMask */
     out_uint16_le(s, data_bytes); /* lengthXorMask */
 
     /* xorMaskData */
     switch (bpp)
     {
-        //case 15: /* coverity: this is logically dead code */
+        case 15:
+        /* fallthrough */
         case 16:
             p16 = (tui16 *) data;
-            for (i = 0; i < 32; i++)
+            for (i = 0; i < height; i++)
             {
-                for (j = 0; j < 32; j++)
+                for (j = 0; j < width; j++)
                 {
                     out_uint16_le(s, *p16);
                     p16++;
@@ -814,9 +826,9 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
             break;
         case 24:
             p = data;
-            for (i = 0; i < 32; i++)
+            for (i = 0; i < height; i++)
             {
-                for (j = 0; j < 32; j++)
+                for (j = 0; j < width; j++)
                 {
                     out_uint8(s, *p);
                     p++;
@@ -829,9 +841,9 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
             break;
         case 32:
             p32 = (tui32 *) data;
-            for (i = 0; i < 32; i++)
+            for (i = 0; i < height; i++)
             {
-                for (j = 0; j < 32; j++)
+                for (j = 0; j < width; j++)
                 {
                     out_uint32_le(s, *p32);
                     p32++;
@@ -840,7 +852,7 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
             break;
     }
 
-    out_uint8a(s, mask, 128); /* andMaskData */
+    out_uint8a(s, mask, mask_bytes); /* andMaskData */
     out_uint8(s, 0); /* pad */
     s_mark_end(s);
     if (session->client_info->use_fast_path & 1) /* fastpath output supported */
@@ -849,11 +861,11 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
         {
             LOG_DEVEL(LOG_LEVEL_TRACE, "Sending [MS-RDPBCGR] TS_FP_COLORPOINTERATTRIBUTE "
                       "cachedPointerUpdateData = { cacheIndex %d, "
-                      "hotSpot.xPos %d, hotSpot.yPos %d, width 32, "
-                      "height 32, lengthAndMask 128, lengthXorMask %d, "
+                      "hotSpot.xPos %d, hotSpot.yPos %d, width %d, "
+                      "height %d, lengthAndMask %d, lengthXorMask %d, "
                       "xorMaskData <omitted from log>, "
                       "andMaskData <omitted from log> }",
-                      cache_idx, x, y, data_bytes);
+                      cache_idx, x, y, width, height, mask_bytes, data_bytes);
             if (xrdp_rdp_send_fastpath((struct xrdp_rdp *)session->rdp, s,
                                        FASTPATH_UPDATETYPE_COLOR) != 0)
             {
@@ -867,11 +879,11 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
             LOG_DEVEL(LOG_LEVEL_TRACE, "Sending [MS-RDPBCGR] TS_FP_POINTERATTRIBUTE "
                       "newPointerUpdateData.xorBpp %d, "
                       "newPointerUpdateData.colorPtrAttr = { cacheIndex %d, "
-                      "hotSpot.xPos %d, hotSpot.yPos %d, width 32, "
-                      "height 32, lengthAndMask 128, lengthXorMask %d, "
+                      "hotSpot.xPos %d, hotSpot.yPos %d, width %d, "
+                      "height %d, lengthAndMask %d, lengthXorMask %d, "
                       "xorMaskData <omitted from log>, "
                       "andMaskData <omitted from log> }",
-                      bpp, cache_idx, x, y, data_bytes);
+                      bpp, cache_idx, x, y, width, height, mask_bytes, data_bytes);
             if (xrdp_rdp_send_fastpath((struct xrdp_rdp *)session->rdp, s,
                                        FASTPATH_UPDATETYPE_POINTER) != 0)
             {
@@ -887,21 +899,21 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
         {
             LOG_DEVEL(LOG_LEVEL_TRACE, "Sending [MS-RDPBCGR] TS_COLORPOINTERATTRIBUTE "
                       "cacheIndex %d, "
-                      "hotSpot.xPos %d, hotSpot.yPos %d, width 32, "
-                      "height 32, lengthAndMask 128, lengthXorMask %d, "
+                      "hotSpot.xPos %d, hotSpot.yPos %d, width %d, "
+                      "height %d, lengthAndMask %d, lengthXorMask %d, "
                       "xorMaskData <omitted from log>, "
                       "andMaskData <omitted from log>",
-                      cache_idx, x, y, data_bytes);
+                      cache_idx, x, y, width, height, mask_bytes, data_bytes);
         }
         else
         {
             LOG_DEVEL(LOG_LEVEL_TRACE, "Sending [MS-RDPBCGR] TS_POINTERATTRIBUTE "
                       "xorBpp %d, colorPtrAttr = { cacheIndex %d, "
-                      "hotSpot.xPos %d, hotSpot.yPos %d, width 32, "
-                      "height 32, lengthAndMask 128, lengthXorMask %d, "
+                      "hotSpot.xPos %d, hotSpot.yPos %d, width %d, "
+                      "height %d, lengthAndMask %d, lengthXorMask %d, "
                       "xorMaskData <omitted from log>, "
                       "andMaskData <omitted from log> }",
-                      bpp, cache_idx, x, y, data_bytes);
+                      bpp, cache_idx, x, y, width, height, mask_bytes, data_bytes);
         }
         xrdp_rdp_send_data((struct xrdp_rdp *)session->rdp, s,
                            RDP_DATA_PDU_POINTER);
@@ -1176,6 +1188,12 @@ libxrdp_reset(struct xrdp_session *session,
         return 1;
     }
 
+    /*
+     * Stop output from the client during the deactivation-reactivation
+     * sequence [MS-RDPBCGR] 1.3.1.3 */
+    xrdp_rdp_suppress_output((struct xrdp_rdp *)session->rdp, 1,
+                             XSO_REASON_DEACTIVATE_REACTIVATE, 0, 0, 0, 0);
+
     /* shut down the rdp client
      *
      * When resetting the lib, disable application input checks, as
@@ -1427,6 +1445,23 @@ libxrdp_disable_channel(struct xrdp_session *session, int channel_id,
         channel_item->name);
     return 1;
 }
+
+/*****************************************************************************/
+int
+libxrdp_drdynvc_start(struct xrdp_session *session)
+{
+    struct xrdp_rdp *rdp;
+    struct xrdp_sec *sec;
+    struct xrdp_channel *chan;
+
+    LOG_DEVEL(LOG_LEVEL_TRACE, "libxrdp_drdynvc_start:");
+
+    rdp = (struct xrdp_rdp *) (session->rdp);
+    sec = rdp->sec_layer;
+    chan = sec->chan_layer;
+    return xrdp_channel_drdynvc_start(chan);
+}
+
 
 /*****************************************************************************/
 int
@@ -1790,6 +1825,19 @@ libxrdp_send_session_info(struct xrdp_session *session, const char *data,
 static void
 sanitise_extended_monitor_attributes(struct monitor_info *monitor_layout)
 {
+    if (monitor_layout->physical_width == 0
+            && monitor_layout->physical_width == 0
+            && monitor_layout->orientation == 0
+            && monitor_layout->desktop_scale_factor == 0
+            && monitor_layout->device_scale_factor == 0)
+    {
+        /* Module expects us to provide defaults */
+        monitor_layout->orientation = ORIENTATION_LANDSCAPE;
+        monitor_layout->desktop_scale_factor = 100;
+        monitor_layout->device_scale_factor = 100;
+        return;
+    }
+
     /* if EITHER physical_width or physical_height are
      * out of range, BOTH must be ignored.
      */
@@ -1880,16 +1928,16 @@ libxrdp_process_monitor_stream(struct stream *s,
 {
     uint32_t num_monitor;
     uint32_t monitor_index;
+    struct monitor_info monitors[CLIENT_MONITOR_DATA_MAXIMUM_MONITORS];
     struct monitor_info *monitor_layout;
-    struct xrdp_rect all_monitors_encompassing_bounds = {0};
-    int got_primary = 0;
     int monitor_struct_stream_check_bytes;
     const char *monitor_struct_stream_check_message;
 
     LOG_DEVEL(LOG_LEVEL_TRACE, "libxrdp_process_monitor_stream:");
     if (description == NULL)
     {
-        LOG_DEVEL(LOG_LEVEL_ERROR, "libxrdp_process_monitor_stream: description was"
+        LOG_DEVEL(LOG_LEVEL_ERROR,
+                  "libxrdp_process_monitor_stream: description was"
                   " null. Valid pointer to allocated description expected.");
         return SEC_PROCESS_MONITORS_ERR;
     }
@@ -1937,7 +1985,7 @@ libxrdp_process_monitor_stream(struct stream *s,
             " from [MS-RDPEDISP] 2.2.2.2.1 DISPLAYCONTROL_MONITOR_LAYOUT.";
     }
 
-    description->monitorCount = num_monitor;
+    memset(monitors, 0, sizeof(monitors[0]) * num_monitor);
 
     for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
     {
@@ -1949,7 +1997,8 @@ libxrdp_process_monitor_stream(struct stream *s,
             return SEC_PROCESS_MONITORS_ERR;
         }
 
-        monitor_layout = description->minfo + monitor_index;
+        monitor_layout = &monitors[monitor_index];
+
         if (full_parameters != 0)
         {
             in_uint32_le(s, monitor_layout->flags);
@@ -2045,128 +2094,10 @@ libxrdp_process_monitor_stream(struct stream *s,
                 monitor_layout->is_primary = TS_MONITOR_PRIMARY;
             }
         }
-
-        if (monitor_index == 0)
-        {
-            all_monitors_encompassing_bounds.left = monitor_layout->left;
-            all_monitors_encompassing_bounds.top = monitor_layout->top;
-            all_monitors_encompassing_bounds.right = monitor_layout->right;
-            all_monitors_encompassing_bounds.bottom = monitor_layout->bottom;
-        }
-        else
-        {
-            all_monitors_encompassing_bounds.left =
-                MIN(monitor_layout->left,
-                    all_monitors_encompassing_bounds.left);
-            all_monitors_encompassing_bounds.top =
-                MIN(monitor_layout->top,
-                    all_monitors_encompassing_bounds.top);
-            all_monitors_encompassing_bounds.right =
-                MAX(all_monitors_encompassing_bounds.right,
-                    monitor_layout->right);
-            all_monitors_encompassing_bounds.bottom =
-                MAX(all_monitors_encompassing_bounds.bottom,
-                    monitor_layout->bottom);
-        }
-
-        if (monitor_layout->is_primary == TS_MONITOR_PRIMARY)
-        {
-            got_primary = 1;
-        }
     }
 
-    if (!got_primary)
-    {
-        /* no primary monitor was set,
-         * choose the leftmost monitor as primary.
-         */
-        for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
-        {
-            monitor_layout = description->minfo + monitor_index;
-            if (monitor_layout->left
-                    == all_monitors_encompassing_bounds.left
-                    && monitor_layout->top
-                    == all_monitors_encompassing_bounds.top)
-            {
-                monitor_layout->is_primary = TS_MONITOR_PRIMARY;
-                break;
-            }
-        }
-    }
-
-    /* set wm geometry if the encompassing area is well formed. Otherwise, log and return an error.*/
-    if (all_monitors_encompassing_bounds.right
-            > all_monitors_encompassing_bounds.left
-            && all_monitors_encompassing_bounds.bottom
-            > all_monitors_encompassing_bounds.top)
-    {
-        description->session_width =
-            all_monitors_encompassing_bounds.right
-            - all_monitors_encompassing_bounds.left + 1;
-        description->session_height =
-            all_monitors_encompassing_bounds.bottom
-            - all_monitors_encompassing_bounds.top + 1;
-    }
-    else
-    {
-        LOG(LOG_LEVEL_ERROR, "libxrdp_process_monitor_stream:"
-            " The area encompassing the monitors is not a"
-            " well-formed rectangle. Received"
-            " (top: %d, left: %d, right: %d, bottom: %d)."
-            " This will prevent initialization.",
-            all_monitors_encompassing_bounds.top,
-            all_monitors_encompassing_bounds.left,
-            all_monitors_encompassing_bounds.right,
-            all_monitors_encompassing_bounds.bottom);
-        return SEC_PROCESS_MONITORS_ERR_INVALID_DESKTOP;
-    }
-
-    /* Make sure virtual desktop size is OK
-     * 2.2.1.3.6 Client Monitor Data (TS_UD_CS_MONITOR)
-     */
-    if (description->session_width
-            > CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_WIDTH
-            || description->session_width
-            < CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_WIDTH
-            || description->session_height
-            > CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_HEIGHT
-            || description->session_height
-            < CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_HEIGHT)
-    {
-        LOG(LOG_LEVEL_ERROR,
-            "libxrdp_process_monitor_stream: Client supplied virtual"
-            " desktop width or height is invalid."
-            " Allowed width range: min %d, max %d. Width received: %d."
-            " Allowed height range: min %d, max %d. Height received: %d",
-            CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_WIDTH,
-            CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_WIDTH,
-            description->session_width,
-            CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_HEIGHT,
-            CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_HEIGHT,
-            description->session_width);
-        return SEC_PROCESS_MONITORS_ERR_INVALID_DESKTOP;
-    }
-
-    /* keep a copy of non negative monitor info values for xrdp_wm usage */
-    for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
-    {
-        monitor_layout = description->minfo_wm + monitor_index;
-
-        g_memcpy(monitor_layout,
-                 description->minfo + monitor_index,
-                 sizeof(struct monitor_info));
-
-        monitor_layout->left =
-            monitor_layout->left - all_monitors_encompassing_bounds.left;
-        monitor_layout->top =
-            monitor_layout->top - all_monitors_encompassing_bounds.top;
-        monitor_layout->right =
-            monitor_layout->right - all_monitors_encompassing_bounds.left;
-        monitor_layout->bottom =
-            monitor_layout->bottom - all_monitors_encompassing_bounds.top;
-    }
-
-    return 0;
+    return libxrdp_init_display_size_description(
+               num_monitor, monitors, description);
 }
 
 /*****************************************************************************/
@@ -2270,6 +2201,163 @@ libxrdp_process_monitor_ex_stream(struct stream *s,
 
     return 0;
 }
+
+/*****************************************************************************/
+int
+libxrdp_init_display_size_description(
+    unsigned int num_monitor,
+    const struct monitor_info *monitors,
+    struct display_size_description *description)
+{
+    unsigned int monitor_index;
+    struct monitor_info *monitor_layout;
+    struct xrdp_rect all_monitors_encompassing_bounds = {0};
+    int got_primary = 0;
+
+    /* Caller should have checked this, so don't log an error */
+    if (num_monitor > CLIENT_MONITOR_DATA_MAXIMUM_MONITORS)
+    {
+        return SEC_PROCESS_MONITORS_ERR_TOO_MANY_MONITORS;
+    }
+
+    description->monitorCount = num_monitor;
+    for (monitor_index = 0 ; monitor_index < num_monitor; ++monitor_index)
+    {
+        monitor_layout = &description->minfo[monitor_index];
+        *monitor_layout = monitors[monitor_index];
+        sanitise_extended_monitor_attributes(monitor_layout);
+
+        if (monitor_index == 0)
+        {
+            all_monitors_encompassing_bounds.left = monitor_layout->left;
+            all_monitors_encompassing_bounds.top = monitor_layout->top;
+            all_monitors_encompassing_bounds.right = monitor_layout->right;
+            all_monitors_encompassing_bounds.bottom = monitor_layout->bottom;
+        }
+        else
+        {
+            all_monitors_encompassing_bounds.left =
+                MIN(monitor_layout->left,
+                    all_monitors_encompassing_bounds.left);
+            all_monitors_encompassing_bounds.top =
+                MIN(monitor_layout->top,
+                    all_monitors_encompassing_bounds.top);
+            all_monitors_encompassing_bounds.right =
+                MAX(all_monitors_encompassing_bounds.right,
+                    monitor_layout->right);
+            all_monitors_encompassing_bounds.bottom =
+                MAX(all_monitors_encompassing_bounds.bottom,
+                    monitor_layout->bottom);
+        }
+
+        if (monitor_layout->is_primary == TS_MONITOR_PRIMARY)
+        {
+            if (got_primary)
+            {
+                // Already got one - don't have two
+                monitor_layout->is_primary = 0;
+            }
+            else
+            {
+                got_primary = 1;
+            }
+        }
+    }
+
+    if (!got_primary)
+    {
+        /* no primary monitor was set,
+         * choose the leftmost monitor as primary.
+         */
+        for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
+        {
+            monitor_layout = description->minfo + monitor_index;
+            if (monitor_layout->left
+                    == all_monitors_encompassing_bounds.left
+                    && monitor_layout->top
+                    == all_monitors_encompassing_bounds.top)
+            {
+                monitor_layout->is_primary = TS_MONITOR_PRIMARY;
+                break;
+            }
+        }
+    }
+
+    /* set wm geometry if the encompassing area is well formed.
+       Otherwise, log and return an error.
+    */
+    if (all_monitors_encompassing_bounds.right
+            > all_monitors_encompassing_bounds.left
+            && all_monitors_encompassing_bounds.bottom
+            > all_monitors_encompassing_bounds.top)
+    {
+        description->session_width =
+            all_monitors_encompassing_bounds.right
+            - all_monitors_encompassing_bounds.left + 1;
+        description->session_height =
+            all_monitors_encompassing_bounds.bottom
+            - all_monitors_encompassing_bounds.top + 1;
+    }
+    else
+    {
+        LOG(LOG_LEVEL_ERROR, "libxrdp_init_display_size_description:"
+            " The area encompassing the monitors is not a"
+            " well-formed rectangle. Received"
+            " (top: %d, left: %d, right: %d, bottom: %d)."
+            " This will prevent initialization.",
+            all_monitors_encompassing_bounds.top,
+            all_monitors_encompassing_bounds.left,
+            all_monitors_encompassing_bounds.right,
+            all_monitors_encompassing_bounds.bottom);
+        return SEC_PROCESS_MONITORS_ERR_INVALID_DESKTOP;
+    }
+
+    /* Make sure virtual desktop size is OK
+     * 2.2.1.3.6 Client Monitor Data (TS_UD_CS_MONITOR)
+     */
+    if (description->session_width
+            > CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_WIDTH
+            || description->session_width
+            < CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_WIDTH
+            || description->session_height
+            > CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_HEIGHT
+            || description->session_height
+            < CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_HEIGHT)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "libxrdp_init_display_size_description: Calculated virtual"
+            " desktop width or height is invalid."
+            " Allowed width range: min %d, max %d. Width received: %d."
+            " Allowed height range: min %d, max %d. Height received: %d",
+            CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_WIDTH,
+            CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_WIDTH,
+            description->session_width,
+            CLIENT_MONITOR_DATA_MINIMUM_VIRTUAL_DESKTOP_HEIGHT,
+            CLIENT_MONITOR_DATA_MAXIMUM_VIRTUAL_DESKTOP_HEIGHT,
+            description->session_width);
+        return SEC_PROCESS_MONITORS_ERR_INVALID_DESKTOP;
+    }
+
+    /* keep a copy of non negative monitor info values for xrdp_wm usage */
+    for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
+    {
+        monitor_layout = description->minfo_wm + monitor_index;
+
+        *monitor_layout = description->minfo[monitor_index];
+
+        monitor_layout->left =
+            monitor_layout->left - all_monitors_encompassing_bounds.left;
+        monitor_layout->top =
+            monitor_layout->top - all_monitors_encompassing_bounds.top;
+        monitor_layout->right =
+            monitor_layout->right - all_monitors_encompassing_bounds.left;
+        monitor_layout->bottom =
+            monitor_layout->bottom - all_monitors_encompassing_bounds.top;
+    }
+
+    return 0;
+}
+
 int EXPORT_CC
 libxrdp_planar_compress(char *in_data, int width, int height,
                         struct stream *s, int bpp, int byte_limit,
@@ -2281,4 +2369,3 @@ libxrdp_planar_compress(char *in_data, int width, int height,
                                   start_line, temp_s,
                                   e, flags);
 }
-
