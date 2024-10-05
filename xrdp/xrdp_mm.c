@@ -1297,116 +1297,40 @@ struct ver_flags_t
 
 /******************************************************************************/
 static int
-cmpverfunc (const void *a, const void *b)
-{
-    return ((struct ver_flags_t *)a)->version -
-           ((struct ver_flags_t *)b)->version;
-}
-
-/******************************************************************************/
-static int
-xrdp_mm_egfx_create_surfaces(struct xrdp_mm *self)
-{
-    int surface_id;
-    int index;
-    int count;
-    int left;
-    int top;
-    int width;
-    int height;
-    struct monitor_info *mi;
-    struct xrdp_bitmap *screen;
-
-    screen = self->wm->screen;
-    count = self->wm->client_info->display_sizes.monitorCount;
-    LOG_DEVEL(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: "
-              "monitor count %d", count);
-    if (count < 1)
-    {
-        left = 0;
-        top = 0;
-        width = screen->width;
-        height = screen->height;
-        xrdp_egfx_send_create_surface(self->egfx, self->egfx->surface_id,
-                                      width, height,
-                                      XR_PIXEL_FORMAT_XRGB_8888);
-        xrdp_egfx_send_map_surface(self->egfx, self->egfx->surface_id,
-                                   left, top);
-        LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: map "
-            "surface_id %d left %d top %d width %d height %d",
-            self->egfx->surface_id, left, top, width, height);
-        return 0;
-    }
-    for (index = 0; index < count; index++)
-    {
-        surface_id = index;
-        mi = self->wm->client_info->display_sizes.minfo_wm + index;
-        left = mi->left;
-        top = mi->top;
-        width = mi->right - mi->left + 1;
-        height = mi->bottom - mi->top + 1;
-        xrdp_egfx_send_create_surface(self->egfx, surface_id,
-                                      width, height,
-                                      XR_PIXEL_FORMAT_XRGB_8888);
-        xrdp_egfx_send_map_surface(self->egfx, surface_id, left, top);
-        LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: map "
-            "surface_id %d left %d top %d width %d height %d",
-            surface_id, left, top, width, height);
-    }
-    return 0;
-}
-
-/******************************************************************************/
-static int
 xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
                             int *versions, int *flagss)
 {
     struct xrdp_mm *self;
     struct xrdp_bitmap *screen;
     int index;
+    int best_index;
     int best_h264_index;
     int best_pro_index;
     int error;
     int version;
     int flags;
-    struct ver_flags_t *ver_flags;
 
-#if !defined(XRDP_H264)
-    UNUSED_VAR(best_h264_index);
-#endif
+    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: Starting");
 
-    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise:");
     self = (struct xrdp_mm *) user;
     screen = self->wm->screen;
     if (screen->data == NULL)
     {
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: can not do gfx");
     }
-    /* create copy for sorting */
-    ver_flags = g_new(struct ver_flags_t, caps_count);
-    if (ver_flags == NULL)
-    {
-        return 1;
-    }
-    for (index = 0; index < caps_count; index++)
-    {
-        ver_flags[index].version = versions[index];
-        ver_flags[index].flags = flagss[index];
-    }
-    /* sort by version */
-    g_qsort(ver_flags, caps_count, sizeof(struct ver_flags_t), cmpverfunc);
+
+    best_index = -1;
     best_h264_index = -1;
     best_pro_index = -1;
+
     for (index = 0; index < caps_count; index++)
     {
-        version = ver_flags[index].version;
-        flags = ver_flags[index].flags;
-        LOG(LOG_LEVEL_INFO, "  version 0x%8.8x flags 0x%8.8x (index: %d)",
-            version, flags, index);
+        version = versions[index];
+        flags = flagss[index];
+        LOG(LOG_LEVEL_INFO, "  version 0x%8.8x flags 0x%8.8x (index: %d)", version, flags, index);
         switch (version)
         {
-            case XR_RDPGFX_CAPVERSION_8: /* FALLTHROUGH */
-            case XR_RDPGFX_CAPVERSION_101:
+            case XR_RDPGFX_CAPVERSION_8:
                 best_pro_index = index;
                 break;
             case XR_RDPGFX_CAPVERSION_81:
@@ -1417,17 +1341,14 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
                 best_pro_index = index;
                 break;
             case XR_RDPGFX_CAPVERSION_10:
-                if (!(flags & XR_RDPGFX_CAPS_FLAG_AVC_DISABLED))
-                {
-                    best_h264_index = index;
-                }
+            case XR_RDPGFX_CAPVERSION_101:
+            case XR_RDPGFX_CAPVERSION_102:
+            case XR_RDPGFX_CAPVERSION_103:
                 best_pro_index = index;
                 break;
-            case XR_RDPGFX_CAPVERSION_102: /* FALLTHROUGH */
-            case XR_RDPGFX_CAPVERSION_103: /* FALLTHROUGH */
-            case XR_RDPGFX_CAPVERSION_104: /* FALLTHROUGH */
-            case XR_RDPGFX_CAPVERSION_105: /* FALLTHROUGH */
-            case XR_RDPGFX_CAPVERSION_106: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_104:
+            case XR_RDPGFX_CAPVERSION_105:
+            case XR_RDPGFX_CAPVERSION_106:
             case XR_RDPGFX_CAPVERSION_107:
                 if (!(flags & XR_RDPGFX_CAPS_FLAG_AVC_DISABLED))
                 {
@@ -1435,58 +1356,47 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
                 }
                 best_pro_index = index;
                 break;
-            default:
-                /* just skip unknwown */
-                LOG(LOG_LEVEL_INFO, "unknown version 0x%8.8x", version);
-                break;
         }
     }
-
-    int best_index = -1;
-    struct xrdp_tconfig_gfx_codec_order *co = &self->wm->gfx_config->codec;
-    char cobuff[64];
-
-    LOG(LOG_LEVEL_INFO, "Codec search order is %s",
-        tconfig_codec_order_to_str(co, cobuff, sizeof(cobuff)));
-    for (index = 0 ; index < co->codec_count ; ++index)
+    if (best_pro_index >= 0)
     {
-#if defined(XRDP_H264)
-        if (co->codecs[index] == XTC_H264 && best_h264_index >= 0)
-        {
-            LOG(LOG_LEVEL_INFO, "Matched H264 mode");
-            best_index = best_h264_index;
-            self->egfx_flags = XRDP_EGFX_H264;
-            break;
-        }
+        best_index = best_pro_index;
+        self->egfx_flags = XRDP_EGFX_RFX_PRO;
+    }
+    if (best_h264_index >= 0) /* prefer h264, todo use setting in xrdp.ini for this */
+    {
+
+#if defined(XRDP_X264) \
+    || defined(XRDP_OPENH264) \
+    || defined(XRDP_NVENC) \
+    || defined(XRDP_NVENC_NO_OPENGL) \
+    || defined(XRDP_VANILLA_NVIDIA_CODEC)
+        best_index = best_h264_index;
+        self->egfx_flags = XRDP_EGFX_H264;
 #endif
 
-        if (co->codecs[index] == XTC_RFX && best_pro_index >= 0)
-        {
-            LOG(LOG_LEVEL_INFO, "Matched RFX mode");
-            best_index = best_pro_index;
-            self->egfx_flags = XRDP_EGFX_RFX_PRO;
-            break;
-        }
     }
-
     if (best_index >= 0)
     {
         LOG(LOG_LEVEL_INFO, "  replying version 0x%8.8x flags 0x%8.8x",
-            ver_flags[best_index].version, ver_flags[best_index].flags);
+            versions[best_index], flagss[best_index]);
         error = xrdp_egfx_send_capsconfirm(self->egfx,
-                                           ver_flags[best_index].version,
-                                           ver_flags[best_index].flags);
+                                           versions[best_index],
+                                           flagss[best_index]);
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: xrdp_egfx_send_capsconfirm "
             "error %d best_index %d", error, best_index);
         error = xrdp_egfx_send_reset_graphics(self->egfx,
                                               screen->width, screen->height,
                                               self->wm->client_info->display_sizes.monitorCount,
-                                              self->wm->client_info->display_sizes.minfo);
+                                              self->wm->client_info->display_sizes.minfo_wm);
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: xrdp_egfx_send_reset_graphics "
             "error %d monitorCount %d",
             error, self->wm->client_info->display_sizes.monitorCount);
         self->egfx_up = 1;
-        xrdp_mm_egfx_create_surfaces(self);
+        xrdp_egfx_send_create_surface(self->egfx, self->egfx->surface_id,
+                                      screen->width, screen->height,
+                                      XR_PIXEL_FORMAT_XRGB_8888);
+        xrdp_egfx_send_map_surface(self->egfx, self->egfx->surface_id, 0, 0);
         self->encoder = xrdp_encoder_create(self);
         xrdp_mm_egfx_invalidate_wm_screen(self);
 
@@ -1516,7 +1426,7 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
         self->encoder = xrdp_encoder_create(self);
         xrdp_bitmap_invalidate(screen, &lrect);
     }
-    g_free(ver_flags);
+
     return 0;
 }
 

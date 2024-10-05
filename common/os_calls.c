@@ -183,23 +183,6 @@ g_init(const char *app_name)
 
     WSAStartup(2, &wsadata);
 #endif
-
-    /* In order to get g_mbstowcs and g_wcstombs to work properly with
-       UTF-8 non-ASCII characters, LC_CTYPE cannot be "C" or blank.
-       To select UTF-8 encoding without specifying any countries/languages,
-       "C.UTF-8" is used but provided in few systems.
-
-       See also: https://sourceware.org/glibc/wiki/Proposals/C.UTF-8 */
-    char *lc_ctype;
-    lc_ctype = setlocale(LC_CTYPE, "C.UTF-8");
-    if (lc_ctype == NULL)
-    {
-        /* use en_US.UTF-8 instead if not available */
-        setlocale(LC_CTYPE, "en_US.UTF-8");
-    }
-
-    g_mk_socket_path(app_name);
-
 #if defined(XRDP_NVENC) || defined(XRDP_VANILLA_NVIDIA_CODEC)
     if (g_strcmp(app_name, "xrdp") == 0)
     {
