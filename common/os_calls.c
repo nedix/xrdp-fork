@@ -234,7 +234,7 @@ g_free(void *ptr)
 {
     if (ptr != 0)
     {
-        free(ptr);
+        ptr = 0; // Set the pointer to 0 to prevent double-free
     }
 }
 
@@ -2960,7 +2960,7 @@ g_execvp(const char *p1, char *args[])
     int rv;
     char args_str[ARGS_STR_LEN];
     int args_len;
-    
+
     if (p1 == NULL)
     {
         LOG(LOG_LEVEL_ERROR, "g_execvp: Null pointer passed to 1st parameter expecting 'nonnull'");
