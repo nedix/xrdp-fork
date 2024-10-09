@@ -155,67 +155,87 @@ fv1_file_load(const char *filename)
     if (!g_file_exist(filename))
     {
         LOG(LOG_LEVEL_ERROR, "Can't find font file %s", filename);
+        return NULL;
     }
-    else
+
+    int file_size = g_file_get_size(filename);
+    if (file_size < FV1_MIN_FILE_SIZE || file_size > FV1_MAX_FILE_SIZE)
     {
-        int file_size = g_file_get_size(filename);
-        if (file_size < FV1_MIN_FILE_SIZE || file_size > FV1_MAX_FILE_SIZE)
-        {
-            LOG(LOG_LEVEL_ERROR, "Font file %s has bad size %d",
-                filename, file_size);
-        }
-        else
-        {
-            struct stream *s;
-            int fd;
-            make_stream(s);
-            init_stream(s, file_size + 1024);
-            fd = g_file_open_ro(filename);
-
-            if (fd < 0)
-            {
-                LOG(LOG_LEVEL_ERROR, "Can't open font file %s", filename);
-            }
-            else
-            {
-                int b = g_file_read(fd, s->data, file_size + 1024);
-                g_file_close(fd);
-
-                if (b < FV1_MIN_FILE_SIZE)
-                {
-                    LOG(LOG_LEVEL_ERROR, "Font file %s is too small",
-                        filename);
-                }
-                else
-                {
-                    char sig[sizeof(FV1_SIGNATURE)];
-                    s->end = s->data + b;
-                    in_uint8a(s, sig, sizeof(FV1_SIGNATURE));
-                    if (g_memcmp(sig, FV1_SIGNATURE, sizeof(sig)) != 0)
-                    {
-                        LOG(LOG_LEVEL_ERROR,
-                            "Font file %s has wrong signature",
-                            filename);
-                    }
-                    else if ((fv1 = fv1_file_create()) != NULL)
-                    {
-                        in_uint8a(s, fv1->font_name, FV1_MAX_FONT_NAME_SIZE);
-                        fv1->font_name[FV1_MAX_FONT_NAME_SIZE] = '\0';
-                        in_uint16_le(s, fv1->point_size);
-                        in_uint16_le(s, fv1->style);
-                        in_uint16_le(s, fv1->body_height);
-                        in_uint16_le(s, fv1->min_descender);
-                        in_uint8s(s, 4);
-
-                        add_glyphs_from_stream(fv1, s);
-                    }
-                }
-            }
-
-            free_stream(s);
-        }
+        LOG(LOG_LEVEL_ERROR, "Font file %s has bad size %d", filename, file_size);
+        return NULL;
     }
 
+    int fd = g_file_open_ro(filename);
+    if (fd < 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Can't open font file %s", filename);
+        return NULL;
+    }
+
+    struct stream *s;
+    make_stream(s);
+    init_stream(s, file_size + 1024);
+
+    if (s->data == NULL || s->p == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "Failed to initialize stream for font file %s",
+            filename);
+
+        g_file_close(fd);
+        free_stream(s);
+
+        return NULL;
+    }
+
+    int bytes_read = g_file_read(fd, s->data, file_size + 1024);
+    g_file_close(fd);
+
+    if (bytes_read < FV1_MIN_FILE_SIZE)
+    {
+        LOG(LOG_LEVEL_ERROR, "Font file %s is too small", filename);
+        free_stream(s);
+        return NULL;
+    }
+
+    s->end = s->data + bytes_read;
+
+    if (s->p == NULL || (s->end - s->p) < (int)sizeof(FV1_SIGNATURE))
+    {
+        LOG(LOG_LEVEL_ERROR, "Invalid stream state for font file %s", filename);
+        free_stream(s);
+        return NULL;
+    }
+
+    char sig[sizeof(FV1_SIGNATURE)];
+    in_uint8a(s, sig, sizeof(FV1_SIGNATURE));
+
+    if (g_memcmp(sig, FV1_SIGNATURE, sizeof(sig)) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Font file %s has wrong signature", filename);
+        free_stream(s);
+        return NULL;
+    }
+
+    fv1 = fv1_file_create();
+    if (fv1 == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "Failed to create fv1 file object");
+        free_stream(s);
+        return NULL;
+    }
+
+    in_uint8a(s, fv1->font_name, FV1_MAX_FONT_NAME_SIZE);
+    fv1->font_name[FV1_MAX_FONT_NAME_SIZE] = '\0';
+    in_uint16_le(s, fv1->point_size);
+    in_uint16_le(s, fv1->style);
+    in_uint16_le(s, fv1->body_height);
+    in_uint16_le(s, fv1->min_descender);
+    in_uint8s(s, 4);
+
+    add_glyphs_from_stream(fv1, s);
+
+    free_stream(s);
     return fv1;
 }
 
