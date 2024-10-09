@@ -744,7 +744,7 @@ clipboard_send_data_response_for_image(const char *data, int data_size)
 static int
 clipboard_send_data_response_for_text(const char *data, int data_size)
 {
-    struct stream *s;
+    struct stream *s = NULL;
     int size;
     int rv;
     int num_words;
@@ -756,7 +756,21 @@ clipboard_send_data_response_for_text(const char *data, int data_size)
     LOG_DEVEL(LOG_LEVEL_DEBUG, "clipboard_send_data_response_for_text: data_size %d "
               "num_words %d", data_size, num_words);
     make_stream(s);
-    init_stream(s, 64 + num_words * 2);
+    init_stream(s, 0); // Initialize with size 0 first
+
+    s->size = 64 + num_words * 2;
+    s->data = g_malloc(s->size, 0); // Allocate memory for the stream
+
+    if (s->data == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "clipboard_send_data_response_for_text: failed to allocate memory for stream");
+        free_stream(s);
+        return 1;
+    }
+
+    s->p = s->data;
+    s->end = s->data + s->size;
+
     out_uint16_le(s, CB_FORMAT_DATA_RESPONSE); /* 5 CLIPRDR_DATA_RESPONSE */
     out_uint16_le(s, CB_RESPONSE_OK); /* 1 status */
     out_uint32_le(s, num_words * 2 + 2); /* length */
@@ -764,7 +778,9 @@ clipboard_send_data_response_for_text(const char *data, int data_size)
     out_uint16_le(s, 0); /* nil for string */
     out_uint32_le(s, 0);
     s_mark_end(s);
+
     size = (int)(s->end - s->data);
+
     LOG_DEVEL(LOG_LEVEL_DEBUG, "clipboard_send_data_response_for_text: data out, "
               "sending CLIPRDR_DATA_RESPONSE (clip_msg_id = 5) size %d "
               "num_words %d", size, num_words);
