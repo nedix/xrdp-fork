@@ -1286,8 +1286,11 @@ scard_function_transmit_return(void *user_data,
     out_uint32_le(out_s, recv_ior.cbPciLength);
     out_uint32_le(out_s, recv_ior.extra_bytes);
     out_uint8a(out_s, recv_ior.extra_data, recv_ior.extra_bytes);
-    out_uint32_le(out_s, cbRecvLength);
-    out_uint8a(out_s, recvBuf, cbRecvLength);
+    if (recvBuf != NULL)
+    {
+        out_uint32_le(out_s, cbRecvLength);
+        out_uint8a(out_s, recvBuf, cbRecvLength);
+    }
     out_uint32_le(out_s, status); /* SCARD_S_SUCCESS status */
     s_mark_end(out_s);
     bytes = (int) (out_s->end - out_s->data);
@@ -1381,7 +1384,10 @@ scard_function_control_return(void *user_data,
         return 1;
     }
     s_push_layer(out_s, iso_hdr, 8);
-    out_uint32_le(out_s, cbRecvLength);
+    if (recvBuf != NULL)
+    {
+        out_uint32_le(out_s, cbRecvLength);
+    }
     out_uint8a(out_s, recvBuf, cbRecvLength);
     out_uint32_le(out_s, status); /* SCARD_S_SUCCESS status */
     s_mark_end(out_s);
