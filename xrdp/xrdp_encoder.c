@@ -1550,7 +1550,7 @@ build_enc_h264_avc444_chroma420_stream(
 static int
 process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 {
-    XRDP_ENC_DATA_DONE *enc_done;
+    XRDP_ENC_DATA_DONE *enc_done = NULL;
     struct fifo *fifo_processed;
     tbus event_processed;
     tbus mutex;

@@ -2960,6 +2960,13 @@ g_execvp(const char *p1, char *args[])
     int rv;
     char args_str[ARGS_STR_LEN];
     int args_len;
+    
+    if (p1 == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "g_execvp: Null pointer passed to 1st parameter expecting 'nonnull'");
+        errno = EINVAL;
+        return -1;
+    }
 
     args_len = 0;
     while (args[args_len] != NULL)
