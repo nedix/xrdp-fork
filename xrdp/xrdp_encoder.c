@@ -976,21 +976,9 @@ build_enc_h264_avc444_yuv420_and_chroma420_stream(
     out_data_bytes = 0;
 #endif
 
-    if (self->gfx)
+    if (!self->gfx)
     {
 
-#if defined(AVC444)
-        /* size of avc420EncodedBitmapstream1 */
-        s_push_layer(s, mcs_hdr, 4);
-#endif
-
-        /* RFX_AVC420_METABLOCK */
-        comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount,
-                                                    scr_width, scr_height);
-        enc_done_flags = 1;
-    }
-    else
-    {
         out_uint32_le(s, 0); /* flags */
         out_uint32_le(s, 0); /* session id */
 
@@ -1009,10 +997,22 @@ build_enc_h264_avc444_yuv420_and_chroma420_stream(
             out_uint16_le(s, rrects[index * 4 + 3]);
         }
 
+#if defined(AVC444)
+        /* size of avc420EncodedBitmapstream1 */
+        s_push_layer(s, mcs_hdr, 4);
+#else
         s_push_layer(s, iso_hdr, 4);
+#endif
 
         comp_bytes_pre = 4 + 4 + 2 + 2 + 2 + 2 + 2 + rcount * 8 + 4;
         enc_done_flags = 0;
+    }
+    else
+    {
+        /* RFX_AVC420_METABLOCK */
+        comp_bytes_pre = build_rfx_avc420_metablock(s, rrects, rcount,
+                                                    scr_width, scr_height);
+        enc_done_flags = 1;
     }
 
     error = 0;
