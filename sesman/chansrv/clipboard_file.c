@@ -495,7 +495,7 @@ static int
 clipboard_send_file_data(int streamId, int lindex,
                          int nPositionLow, int cbRequested)
 {
-    struct stream *s;
+    struct stream *s = NULL;
     int size;
     int rv;
     int fd;
@@ -536,7 +536,23 @@ clipboard_send_file_data(int streamId, int lindex,
         return 1;
     }
     make_stream(s);
-    init_stream(s, cbRequested + 64);
+    init_stream(s, 0); // Initialize with size 0 first
+
+    s->size = cbRequested + 64;
+    s->data = g_malloc(s->size, 0); // Allocate memory for the stream
+
+    if (s->data == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "clipboard_send_file_data: failed to allocate memory for stream");
+        free_stream(s);
+        g_file_close(fd);
+        clipboard_send_filecontents_response_fail(streamId);
+        return 1;
+    }
+
+    s->p = s->data;
+    s->end = s->data + s->size;
+
     size = g_file_read(fd, s->data + 12, cbRequested);
     // If we're at end-of-file, 0 is a valid response
     if (size < 0)
@@ -566,6 +582,7 @@ clipboard_send_file_data(int streamId, int lindex,
 
     return rv;
 }
+
 
 /*****************************************************************************/
 /* ask the client to send the file size */
