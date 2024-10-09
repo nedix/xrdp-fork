@@ -933,8 +933,8 @@ scard_process_disconnect(struct trans *con, struct stream *in_s)
     int dwDisposition;
     struct pcsc_uds_client *uds_client;
     void *user_data;
-    struct pcsc_context *lcontext;
-    struct pcsc_card *lcard;
+    struct pcsc_context *lcontext = 0;
+    struct pcsc_card *lcard = 0;
 
     LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_process_disconnect:");
     uds_client = (struct pcsc_uds_client *) (con->callback_data);
