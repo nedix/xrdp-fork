@@ -1743,22 +1743,40 @@ sound_input_stop_recording(void)
 static int
 sound_process_input_data(struct stream *s, int bytes)
 {
-    struct stream *ls;
-
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "sound_process_input_data: bytes %d g_bytes_in_fifo %d",
+    LOG_DEVEL(LOG_LEVEL_DEBUG,
+              "sound_process_input_data: bytes %d g_bytes_in_fifo %d",
               bytes, g_bytes_in_fifo);
-#if 0 /* no need to cap anymore */
-    /* cap data in fifo */
-    if (g_bytes_in_fifo > 8 * 1024)
-    {
-        return 0;
-    }
-#endif
+
+    struct stream *ls = (struct stream *)NULL;
+
     xstream_new(ls, bytes);
+
+    if (ls->data == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "sound_process_input_data: failed to allocate memory for stream "
+            "data");
+
+        g_free(ls);
+
+        return 1;
+    }
+
     g_memcpy(ls->data, s->p, bytes);
     ls->p += bytes;
     s_mark_end(ls);
-    fifo_add_item(g_in_fifo, (void *) ls);
+
+    if (fifo_add_item(g_in_fifo, ls) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "sound_process_input_data: failed to add stream to FIFO");
+
+        g_free(ls->data);
+        g_free(ls);
+
+        return 1;
+    }
+
     g_bytes_in_fifo += bytes;
 
     return 0;
