@@ -220,7 +220,7 @@ in_utf16_le_fixed_as_utf8_proc(struct stream *s, unsigned int n,
         c32 = get_c32_from_stream(s);
 
         u8len = utf_char32_to_utf8(c32, u8str);
-        if (u8len + 1 <= vn)
+        if (v != NULL && u8len + 1 <= vn)
         {
             /* Room for this character and a terminator. Add the character */
             unsigned int i;
@@ -282,7 +282,7 @@ in_utf16_le_terminated_as_utf8(struct stream *s,
         }
 
         u8len = utf_char32_to_utf8(c32, u8str);
-        if (u8len + 1 <= vn)
+        if (v != NULL && u8len + 1 <= vn)
         {
             /* Room for this character and a terminator. Add the character */
             unsigned int i;
