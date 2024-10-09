@@ -77,26 +77,25 @@ process_sys_login_request(struct pre_session_item *psi)
     const char *password;
     const char *ip_addr;
     int send_client_reply = 1;
+    enum scp_login_status login_status = E_SCP_LOGIN_OK;
 
     rv = scp_get_sys_login_request(psi->client_trans, &username,
                                    &password, &ip_addr);
     if (rv == 0)
     {
-        enum scp_login_status errorcode;
-
         LOG(LOG_LEVEL_INFO,
             "Received system login request from %s for user: %s IP: %s",
             psi->peername, username, ip_addr);
 
         if (psi->login_state != E_PS_LOGIN_NOT_LOGGED_IN)
         {
-            errorcode = E_SCP_LOGIN_ALREADY_LOGGED_IN;
+            login_status = E_SCP_LOGIN_ALREADY_LOGGED_IN;
             LOG(LOG_LEVEL_ERROR, "Connection is already logged in for %s",
                 psi->username);
         }
         else if ((psi->username = g_strdup(username)) == NULL)
         {
-            errorcode = E_SCP_LOGIN_NO_MEMORY;
+            login_status = E_SCP_LOGIN_NO_MEMORY;
             LOG(LOG_LEVEL_ERROR, "Memory allocation failure logging in %s",
                 username);
         }
@@ -118,7 +117,7 @@ process_sys_login_request(struct pre_session_item *psi)
             {
                 LOG(LOG_LEVEL_ERROR,
                     "Can't start sesexec to authenticate user");
-                errorcode = E_SCP_LOGIN_GENERAL_ERROR;
+                login_status = E_SCP_LOGIN_GENERAL_ERROR;
             }
             else
             {
@@ -132,7 +131,7 @@ process_sys_login_request(struct pre_session_item *psi)
                 {
                     LOG(LOG_LEVEL_ERROR,
                         "Can't ask sesexec to authenticate user");
-                    errorcode = E_SCP_LOGIN_GENERAL_ERROR;
+                    login_status = E_SCP_LOGIN_GENERAL_ERROR;
                 }
                 else
                 {
@@ -148,7 +147,7 @@ process_sys_login_request(struct pre_session_item *psi)
         {
             /* We only get here if something has gone
              * wrong with the handover to sesexec */
-            rv = scp_send_login_response(psi->client_trans, errorcode, 1, -1);
+            rv = scp_send_login_response(psi->client_trans, login_status, 1, -1);
             psi->dispatcher_action = E_PSD_TERMINATE_PRE_SESSION;
         }
     }
