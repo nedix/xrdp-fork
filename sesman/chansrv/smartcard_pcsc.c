@@ -1348,55 +1348,92 @@ scard_function_control_return(void *user_data,
                               struct stream *in_s,
                               int len, int status)
 {
-    struct stream *out_s;
+    char *recvBuf = NULL;
     int bytes;
     int cbRecvLength;
-    char *recvBuf;
+    int rv = 1;
     int uds_client_id;
     struct pcsc_uds_client *uds_client;
+    struct stream *out_s = NULL;
     struct trans *con;
 
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_function_control_return:");
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "  status 0x%8.8x", status);
+    LOG_DEVEL(LOG_LEVEL_DEBUG,
+              "scard_function_control_return: status 0x%8.8x", status);
+
     uds_client_id = (int) (tintptr) user_data;
-    uds_client = (struct pcsc_uds_client *)
-                 get_uds_client_by_id(uds_client_id);
+    uds_client = get_uds_client_by_id(uds_client_id);
+
     if (uds_client == 0)
     {
         LOG(LOG_LEVEL_ERROR, "scard_function_control_return: "
             "get_uds_client_by_id failed to find uds_client_id %d",
             uds_client_id);
-        return 1;
+
+        g_free(recvBuf);
+
+        return rv;
     }
+
     con = uds_client->con;
     cbRecvLength = 0;
-    recvBuf = 0;
+
     if (status == 0)
     {
         in_uint8s(in_s, 28);
         in_uint32_le(in_s, cbRecvLength);
-        in_uint8p(in_s, recvBuf, cbRecvLength);
+
+        if (cbRecvLength > 0)
+        {
+            recvBuf = (char *) malloc(cbRecvLength);
+
+            if (recvBuf == NULL)
+            {
+                LOG(LOG_LEVEL_ERROR, "scard_function_control_return: "
+                    "failed to allocate memory for recvBuf");
+
+                g_free(recvBuf);
+
+                return rv;
+            }
+
+            in_uint8p(in_s, recvBuf, cbRecvLength);
+        }
     }
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_function_control_return: cbRecvLength %d", cbRecvLength);
+
+    LOG_DEVEL(LOG_LEVEL_DEBUG,
+              "scard_function_control_return: cbRecvLength %d",
+              cbRecvLength);
+
     out_s = trans_get_out_s(con, 8192);
+
     if (out_s == NULL)
     {
-        return 1;
+        g_free(recvBuf);
+
+        return rv;
     }
+
     s_push_layer(out_s, iso_hdr, 8);
+
     if (recvBuf != NULL)
     {
         out_uint32_le(out_s, cbRecvLength);
+        out_uint8a(out_s, recvBuf, cbRecvLength);
     }
-    out_uint8a(out_s, recvBuf, cbRecvLength);
+
     out_uint32_le(out_s, status); /* SCARD_S_SUCCESS status */
     s_mark_end(out_s);
+
     bytes = (int) (out_s->end - out_s->data);
+
     s_pop_layer(out_s, iso_hdr);
     out_uint32_le(out_s, bytes - 8);
     out_uint32_le(out_s, 0x0A); /* SCARD_CONTROL 0x0A */
-    return trans_force_write(con);
+    rv = trans_force_write(con);
+
+    return rv;
 }
+
 
 /*****************************************************************************/
 struct pcsc_status
