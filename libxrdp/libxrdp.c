@@ -92,11 +92,15 @@ libxrdp_process_incoming(struct xrdp_session *session)
 int EXPORT_CC
 libxrdp_get_pdu_bytes(const char *aheader)
 {
-    int rv;
-    const tui8 *header;
+    int rv = -1;
 
-    rv = -1;
-    header = (const tui8 *) aheader;
+    if (aheader == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "libxrdp_get_pdu_bytes: aheader == NULL");
+        return rv;
+    }
+
+    const tui8 *header = (const tui8 *) aheader;
 
     if (header[0] == 0x03)
     {
