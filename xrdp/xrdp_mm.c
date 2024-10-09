@@ -1437,8 +1437,13 @@ xrdp_mm_update_module_frame_ack(struct xrdp_mm *self)
     int fif;
     struct xrdp_encoder *encoder;
 
+    if (self == NULL || self->mod == NULL) {
+        return 0;
+    }
+
     encoder = self->encoder;
     fif = encoder->frames_in_flight;
+
     if (encoder->frame_id_client + fif > encoder->frame_id_server)
     {
         if (encoder->frame_id_server > encoder->frame_id_server_sent)
@@ -1449,6 +1454,7 @@ xrdp_mm_update_module_frame_ack(struct xrdp_mm *self)
             self->mod->mod_frame_ack(self->mod, 0, encoder->frame_id_server);
         }
     }
+
     return 0;
 }
 
