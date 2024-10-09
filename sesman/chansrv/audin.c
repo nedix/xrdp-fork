@@ -357,11 +357,17 @@ audin_process_data(int chan_id, struct stream *s)
     LOG_DEVEL(LOG_LEVEL_DEBUG, "audin_process_data: data_bytes %d", data_bytes);
 
     xstream_new(ls, data_bytes);
-    g_memcpy(ls->data, s->p, data_bytes);
-    ls->p += data_bytes;
-    s_mark_end(ls);
-    fifo_add_item(g_in_fifo, (void *) ls);
-    g_bytes_in_fifo += data_bytes;
+
+    if (ls->data != NULL) {
+        g_memcpy(ls->data, s->p, data_bytes);
+        ls->p += data_bytes;
+        s_mark_end(ls);
+        fifo_add_item(g_in_fifo, (void *) ls);
+        g_bytes_in_fifo += data_bytes;
+    } else {
+        LOG(LOG_LEVEL_ERROR, "audin_process_data: failed to allocate memory for stream");
+        xstream_free(ls);
+    }
 
     return 0;
 }
