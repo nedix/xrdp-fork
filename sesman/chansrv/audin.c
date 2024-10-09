@@ -202,13 +202,26 @@ audin_send_open(int chan_id)
 {
     int error;
     int bytes;
-    struct stream *s;
+    struct stream *s = NULL;
     struct xr_wave_format_ex *wf = g_client_formats[g_current_format];
 
     LOG_DEVEL(LOG_LEVEL_INFO, "audin_send_open:");
     make_stream(s);
+    init_stream(s, 0); // Initialize with size 0 first
+
     /* wf->cbSize was checked when the format was received */
-    init_stream(s, wf->cbSize + 64);
+    s->size = wf->cbSize + 64;
+    s->data = g_malloc(s->size, 0); // Allocate memory for the stream
+
+    if (s->data == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "audin_send_open: failed to allocate memory for stream");
+        free_stream(s);
+        return 1;
+    }
+
+    s->p = s->data;
+    s->end = s->data + s->size;
 
     out_uint8(s, MSG_SNDIN_OPEN);
     out_uint32_le(s, 2048); /* FramesPerPacket */
