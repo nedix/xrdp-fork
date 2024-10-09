@@ -3587,8 +3587,7 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                     self->encoder->frame_id_server = enc_done->frame_id;
                     xrdp_mm_update_module_frame_ack(self);
                 }
-                else
-                {
+                else if (self->mod != NULL) {
                     self->mod->mod_frame_ack(self->mod, 0,
                                              enc_done->frame_id);
                 }
