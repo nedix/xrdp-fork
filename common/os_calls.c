@@ -2567,15 +2567,19 @@ mode_t_to_hex(mode_t mode)
 int
 g_file_duplicate_on(int fd, int target_fd)
 {
-    int rv = (dup2(fd, target_fd) >= 0);
+    const int rv = dup2(fd, target_fd);
 
-    if (rv < 0)
+    if (rv == -1)
     {
         LOG(LOG_LEVEL_ERROR, "Can't clone file %d as file %d [%s]",
             fd, target_fd, g_get_strerror());
     }
+    else if (rv != target_fd)
+    {
+        close(fd);
+    }
 
-    return rv;
+    return rv >= 0;
 }
 
 /*****************************************************************************/
