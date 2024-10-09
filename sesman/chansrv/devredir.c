@@ -316,9 +316,24 @@ devredir_data_in(struct stream *s, int chan_id, int chan_flags, int length,
         if (chan_flags & 1)
         {
             xstream_new(g_input_stream, total_length);
+            if (g_input_stream == NULL)
+            {
+                LOG(LOG_LEVEL_ERROR, "devredir_data_in: failed to allocate memory for input stream");
+                rv = -1;
+                goto done;
+            }
         }
 
-        xstream_copyin(g_input_stream, s->p, length);
+        if (g_input_stream != NULL)
+        {
+            xstream_copyin(g_input_stream, s->p, length);
+        }
+        else
+        {
+            LOG(LOG_LEVEL_ERROR, "devredir_data_in: input stream is NULL");
+            rv = -1;
+            goto done;
+        }
 
         /* in last packet, chan_flags & 0x02 will be true */
         if ((chan_flags & 2) == 0)
