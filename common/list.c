@@ -146,12 +146,13 @@ void
 list_clear(struct list *self)
 {
     int i;
+    tbus *new_items;
 
     if (self->auto_free)
     {
         for (i = 0; i < self->count; i++)
         {
-            free((void *)self->items[i]);
+            g_free((void *)self->items[i]);
             self->items[i] = 0;
         }
     }
@@ -159,7 +160,17 @@ list_clear(struct list *self)
     self->count = 0;
     self->grow_by = DEFAULT_GROW_BY_SIZE;
     self->alloc_size = DEFAULT_LIST_SIZE;
-    self->items = (tbus *)realloc(self->items, sizeof(tbus) * self->alloc_size);
+
+    new_items = (tbus *)realloc(self->items, sizeof(tbus) * self->alloc_size);
+
+    if (new_items == NULL)
+    {
+        g_free(self->items);
+        self->items = NULL;
+        self->alloc_size = 0;
+    }
+
+    self->items = new_items;
 }
 
 /******************************************************************************/
