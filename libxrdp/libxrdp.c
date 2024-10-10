@@ -2214,6 +2214,19 @@ libxrdp_init_display_size_description(
     struct display_size_description *description)
 {
     unsigned int monitor_index;
+
+    if (monitors == NULL || description == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "libxrdp_init_display_size_description: invalid input");
+
+        return SEC_PROCESS_MONITORS_ERR;
+    }
+
+    if (num_monitor == 0 || num_monitor > CLIENT_MONITOR_DATA_MAXIMUM_MONITORS)
+    {
+        return SEC_PROCESS_MONITORS_ERR;
+    }
     struct monitor_info *monitor_layout;
     struct xrdp_rect all_monitors_encompassing_bounds = {0};
     int got_primary = 0;
@@ -2345,6 +2358,14 @@ libxrdp_init_display_size_description(
     /* keep a copy of non negative monitor info values for xrdp_wm usage */
     for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
     {
+        LOG(LOG_LEVEL_DEBUG, "libxrdp_init_display_size_description "
+            "monitor: %d. coordinates: %d %d %d %d",
+            monitor_index,
+            monitors[monitor_index].top,
+            monitors[monitor_index].right,
+            monitors[monitor_index].bottom,
+            monitors[monitor_index].left);
+
         monitor_layout = description->minfo_wm + monitor_index;
 
         *monitor_layout = description->minfo[monitor_index];

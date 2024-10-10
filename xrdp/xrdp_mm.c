@@ -1216,6 +1216,12 @@ xrdp_mm_egfx_invalidate_wm_screen(struct xrdp_mm *self)
 static int
 dynamic_monitor_open_response(intptr_t id, int chan_id, int creation_status)
 {
+    if (id == 0 || chan_id == 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "dynamic_monitor_open_response: bad input");
+        return 1;
+    }
+
     struct xrdp_process *pro;
     struct xrdp_wm *wm;
     struct stream *s;
@@ -1541,6 +1547,12 @@ sync_dynamic_monitor_data(struct xrdp_wm *wm,
 {
     struct display_size_description *display_sizes
         = &(wm->client_info->display_sizes);
+
+    if (wm == NULL || description == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "%s: invalid input", __func__);
+        return;
+    }
 
     display_sizes->monitorCount = description->monitorCount;
     display_sizes->session_width = description->session_width;

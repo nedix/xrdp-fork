@@ -501,6 +501,7 @@ xrdp_rdp_recv(struct xrdp_rdp *self, struct stream *s, int *code)
         {
             if (chan > MCS_GLOBAL_CHANNEL)
             {
+                LOG(LOG_LEVEL_DEBUG, "xrdp_rdp_recv: processing channel data for channel id %d", chan);
                 if (xrdp_channel_process(self->sec_layer->chan_layer, s, chan) != 0)
                 {
                     LOG(LOG_LEVEL_ERROR, "xrdp_rdp_recv: xrdp_channel_process failed");
