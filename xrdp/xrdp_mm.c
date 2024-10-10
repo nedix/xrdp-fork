@@ -1490,7 +1490,7 @@ xrdp_mm_egfx_frame_ack(void *user, uint32_t queue_depth, int frame_id,
 }
 
 /******************************************************************************/
-int
+static int
 egfx_initialize(struct xrdp_mm *self)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE, "egfx_initialize");
@@ -1989,7 +1989,7 @@ dynamic_monitor_process_queue(struct xrdp_mm *self)
 }
 
 /******************************************************************************/
-int
+static int
 dynamic_monitor_initialize(struct xrdp_mm *self)
 {
     struct xrdp_drdynvc_procs d_procs;
