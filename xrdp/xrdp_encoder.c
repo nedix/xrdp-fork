@@ -1580,6 +1580,12 @@ process_enc_h264(struct xrdp_encoder *self, XRDP_ENC_DATA *enc)
 #endif
     }
 
+    if (enc_done == NULL)
+    {
+        LOG(LOG_LEVEL_ERROR, "process_enc_h264: failed to build stream");
+        return 1;
+    }
+
     enc_done->rect = calculate_bounding_box(
         enc->u.sc.drects, enc->u.sc.num_drects);
 
