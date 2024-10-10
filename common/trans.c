@@ -449,6 +449,11 @@ trans_check_wait_objs(struct trans *self)
                     rv = self->trans_data_in(self);
                     if (self->no_stream_init_on_data_in == 0)
                     {
+                        if (self->in_s != NULL)
+                        {
+                            free_stream(self->in_s);
+                        }
+
                         init_stream(self->in_s, 0);
                     }
                 }
