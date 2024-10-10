@@ -99,6 +99,13 @@ struct sockaddr_hvs
 #include "string_calls.h"
 #include "log.h"
 #include "xrdp_constants.h"
+#include "xrdp_sockets.h"
+
+/* for clearenv() */
+#if defined(_WIN32)
+#else
+extern char **environ;
+#endif
 
 #if defined(__linux__)
 #include <linux/unistd.h>
@@ -142,6 +149,28 @@ union sock_info
 int
 g_rm_temp_dir(void)
 {
+    return 0;
+}
+
+/*****************************************************************************/
+int
+g_mk_socket_path(const char *app_name)
+{
+    if (!g_directory_exist(XRDP_SOCKET_PATH))
+    {
+        if (!g_create_path(XRDP_SOCKET_PATH"/"))
+        {
+            /* if failed, still check if it got created by someone else */
+            if (!g_directory_exist(XRDP_SOCKET_PATH))
+            {
+                LOG(LOG_LEVEL_ERROR,
+                    "g_mk_socket_path: g_create_path(%s) failed",
+                    XRDP_SOCKET_PATH);
+                return 1;
+            }
+        }
+        g_chmod_hex(XRDP_SOCKET_PATH, 0x1777);
+    }
     return 0;
 }
 
@@ -220,6 +249,17 @@ g_writeln(const char *format, ...)
 #else
     g_printf("\n");
 #endif
+}
+
+/*****************************************************************************/
+/* free the memory pointed to by ptr, ptr can be zero */
+void
+g_free(void *ptr)
+{
+    if (ptr != 0)
+    {
+        ptr = 0; // Set the pointer to 0 to prevent double-free
+    }
 }
 
 /*****************************************************************************/
@@ -3330,6 +3370,48 @@ g_waitchild(struct exit_status *e)
 
     return rv;
 #endif
+}
+
+/*****************************************************************************/
+/* Used by daemonizing code */
+/* returns error, zero is success, non zero is error */
+int
+g_drop_privileges(const char *user, const char *group)
+{
+    int rv = 1;
+    int uid;
+    int gid;
+    if (g_getuser_info_by_name(user, &uid, NULL, NULL, NULL, NULL) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Unable to get UID for user '%s' [%s]", user,
+            g_get_strerror());
+    }
+    else if (g_getgroup_info(group, &gid) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Unable to get GID for group '%s' [%s]", group,
+            g_get_strerror());
+    }
+    else if (initgroups(user, gid) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Unable to init groups for '%s' [%s]", user,
+            g_get_strerror());
+    }
+    else if (g_setgid(gid) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Unable to set group to '%s' [%s]", group,
+            g_get_strerror());
+    }
+    else if (g_setuid(uid) != 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "Unable to set user to '%s' [%s]", user,
+            g_get_strerror());
+    }
+    else
+    {
+        rv = 0;
+    }
+
+    return rv;
 }
 
 /*****************************************************************************/
