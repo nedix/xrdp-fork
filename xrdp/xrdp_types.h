@@ -28,6 +28,7 @@
 #include "xrdp_constants.h"
 #include "fifo.h"
 #include "guid.h"
+#include "scancode.h"
 #include "xrdp_client_info.h"
 
 #define MAX_NR_CHANNELS 16
