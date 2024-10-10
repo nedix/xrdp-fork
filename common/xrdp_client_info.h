@@ -74,6 +74,15 @@ enum client_resize_mode
     CRMODE_MULTI_SCREEN
 };
 
+enum xrdp_capture_code
+{
+    CC_SIMPLE       = 0,
+    CC_SUF_A16      = 1,
+    CC_SUF_RFX      = 2,
+    CC_SUF_A2       = 3,
+    CC_GFX_PRO      = 4,
+    CC_GFX_A2       = 5
+};
 
 /**
  * Type describing Unicode input state
@@ -180,7 +189,7 @@ struct xrdp_client_info
     int mcs_early_capability_flags;
 
     int max_fastpath_frag_bytes;
-    int capture_code;
+    int pad0; /* unused */
     int capture_format;
 
     char certificate[1024];
