@@ -30,6 +30,7 @@
 #include "scp.h"
 #include <ctype.h>
 #include "xrdp_encoder.h"
+#include "xrdp_mm.h"
 #include "xrdp_sockets.h"
 #include "xrdp_egfx.h"
 #include "libxrdp.h"
