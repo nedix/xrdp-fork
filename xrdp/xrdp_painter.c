@@ -796,7 +796,7 @@ static int
 xrdp_painter_draw_utf32(struct xrdp_painter *self,
                         struct xrdp_bitmap *dst,
                         int x, int y,
-                        char32_t utf32[], unsigned int utf32len)
+                        const char32_t *utf32, unsigned int utf32len)
 {
     int i;
     int f;
@@ -818,9 +818,9 @@ xrdp_painter_draw_utf32(struct xrdp_painter *self,
     struct xrdp_font *font;
     struct xrdp_font_char *font_item;
 
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "xrdp_painter_draw_text:");
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "xrdp_painter_draw_utf32:");
 
-    if (self == 0)
+    if (self == NULL || dst == NULL || utf32 == NULL)
     {
         return 0;
     }
@@ -832,19 +832,19 @@ xrdp_painter_draw_utf32(struct xrdp_painter *self,
 
     /* todo data */
 
-    if (dst->type == 0)
+    if (dst->type == WND_TYPE_BITMAP)
     {
         return 0;
     }
 
     xrdp_painter_font_needed(self);
 
-    if (self->font == 0)
+    if (self->font == NULL)
     {
         return 0;
     }
 
-    if (self->painter != 0)
+    if (self->painter != NULL)
     {
 #if defined(XRDP_PAINTER)
         struct painter_bitmap pat;
@@ -938,6 +938,11 @@ xrdp_painter_draw_utf32(struct xrdp_painter *self,
     index = 0;
     data = (char *)g_malloc(utf32len * 2, 1);
 
+    if (data == NULL)
+    {
+        return 1;
+    }
+
     for (index = 0 ; index < utf32len; ++index)
     {
         font_item = XRDP_FONT_GET_CHAR(font, utf32[index]);
@@ -957,6 +962,12 @@ xrdp_painter_draw_utf32(struct xrdp_painter *self,
 
     xrdp_bitmap_get_screen_clip(dst, self, &clip_rect, &dx, &dy);
     region = xrdp_region_create(self->wm);
+
+    if (region == NULL)
+    {
+        g_free(data);
+        return 1;
+    }
 
     if (dst->type != WND_TYPE_OFFSCREEN)
     {
