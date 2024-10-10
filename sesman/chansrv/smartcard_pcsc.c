@@ -51,6 +51,7 @@
 #include "trans.h"
 #include "chansrv.h"
 #include "list.h"
+#include "smartcard_pcsc.h"
 
 #if PCSC_STANDIN
 
