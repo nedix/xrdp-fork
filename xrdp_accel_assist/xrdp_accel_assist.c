@@ -352,7 +352,7 @@ xorg_process_message_64(struct xorgxrdp_info *xi, struct stream *s)
     int index;
     int recv_bytes;
     enum encoder_result rv;
-    struct xh_rect *crects;
+    struct xh_rect *crects = NULL;
     char *bmpdata;
     char msg[4];
     unsigned int num_fds;
@@ -366,7 +366,13 @@ xorg_process_message_64(struct xorgxrdp_info *xi, struct stream *s)
     in_uint8s(s, 8 * num_drects);
     /* copied pixels */
     in_uint16_le(s, num_crects);
+
     crects = g_new(struct xh_rect, num_crects);
+
+    if (crects == NULL) {
+        return 1;
+    }
+
     for (index = 0; index < num_crects; index++)
     {
         in_uint16_le(s, crects[index].x);
