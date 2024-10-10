@@ -42,9 +42,13 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/XKBlib.h>
+#include <X11/extensions/XKBrules.h>
 #include <locale.h>
+#include <unistd.h>
 
 extern int xfree86_to_evdev[137 - 8 + 1];
+#include "scancode.h"
+#include "xrdp_constants.h"
 
 int main(int argc, char **argv)
 {
