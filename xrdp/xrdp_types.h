@@ -588,6 +588,9 @@ struct xrdp_wm
     /* configuration derived from xrdp.ini */
     struct xrdp_config *xrdp_config;
 
+    /* configuration derived from gfx.toml */
+    struct xrdp_tconfig_gfx *gfx_config;
+
     struct xrdp_region *screen_dirty_region;
     int last_screen_draw_time;
 };
