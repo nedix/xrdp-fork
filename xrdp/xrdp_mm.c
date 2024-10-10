@@ -697,34 +697,6 @@ xrdp_mm_send_unicode_shutdown(struct xrdp_mm *self, struct trans *trans)
     return trans_write_copy(self->chan_trans);
 }
 
-/*****************************************************************************/
-static int
-xrdp_mm_send_unicode_setup(struct xrdp_mm *self, struct trans *trans)
-{
-    int rv = 0;
-
-    if (self->wm->client_info->unicode_input_support == UIS_SUPPORTED)
-    {
-        struct stream *s = trans_get_out_s(self->chan_trans, 8192);
-        if (s == NULL)
-        {
-            rv = 1;
-        }
-        else
-        {
-            out_uint32_le(s, 0); /* version */
-            out_uint32_le(s, 8 + 8); /* size */
-            out_uint32_le(s, 21); /* msg id */
-            out_uint32_le(s, 8); /* size */
-            s_mark_end(s);
-
-            rv = trans_write_copy(self->chan_trans);
-        }
-    }
-
-    return rv;
-}
-
 /******************************************************************************/
 int xrdp_mm_send_unicode_to_chansrv(struct xrdp_mm *self,
                                     int key_down,
