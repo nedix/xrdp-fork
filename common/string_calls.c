@@ -665,6 +665,7 @@ g_bytes_to_hexdump(const char *src, int len)
         }
 
     }
+
     if (dump_offset > dump_length)
     {
         LOG_DEVEL(LOG_LEVEL_WARNING,
@@ -676,7 +677,15 @@ g_bytes_to_hexdump(const char *src, int len)
 
     /* replace the last new line with the end of the string since log_message
        will add a new line */
-    dump_buffer[dump_offset - HEX_DUMP_NEWLINE_SIZE] = '\0';
+    if (dump_offset >= HEX_DUMP_NEWLINE_SIZE)
+    {
+        dump_buffer[dump_offset - HEX_DUMP_NEWLINE_SIZE] = '\0';
+    }
+    else
+    {
+        dump_buffer[0] = '\0';
+    }
+
     return dump_buffer;
 }
 
