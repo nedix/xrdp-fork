@@ -248,7 +248,6 @@ xrdp_mm_send_sys_login_request(struct xrdp_mm *self, const char *username,
 static int
 xrdp_mm_create_session(struct xrdp_mm *self)
 {
-    int rv = 0;
     int xserverbpp;
     enum scp_session_type type;
 
@@ -266,28 +265,23 @@ xrdp_mm_create_session(struct xrdp_mm *self)
         default:
             xrdp_wm_log_msg(self->wm, LOG_LEVEL_ERROR,
                             "Unrecognised session code %d", self->code);
-            rv = 1;
+            return 1;
     }
 
-    if (rv == 0)
-    {
-        xserverbpp = xrdp_mm_get_value_int(self, "xserverbpp",
-                                           self->wm->screen->bpp);
+    xserverbpp = xrdp_mm_get_value_int(self, "xserverbpp",
+                                       self->wm->screen->bpp);
 
-        xrdp_wm_log_msg(self->wm, LOG_LEVEL_DEBUG,
-                        "sending create session request to session"
-                        " manager. Please wait...");
-        rv = scp_send_create_session_request(
-                 self->sesman_trans,
-                 type,
-                 self->wm->screen->width,
-                 self->wm->screen->height,
-                 xserverbpp,
-                 self->wm->client_info->program,
-                 self->wm->client_info->directory);
-    }
-
-    return rv;
+    xrdp_wm_log_msg(self->wm, LOG_LEVEL_DEBUG,
+                    "sending create session request to session"
+                    " manager. Please wait...");
+    return scp_send_create_session_request(
+             self->sesman_trans,
+             type,
+             self->wm->screen->width,
+             self->wm->screen->height,
+             xserverbpp,
+             self->wm->client_info->program,
+             self->wm->client_info->directory);
 }
 
 /*****************************************************************************/
