@@ -818,7 +818,7 @@ xrdp_egfx_process_frame_ack(struct xrdp_egfx *egfx, struct stream *s)
     LOG(LOG_LEVEL_TRACE, "xrdp_egfx_process_frame_ack: queueDepth %d"
         " intframeId %d totalFramesDecoded %d",
         queueDepth, intframeId, totalFramesDecoded);
-    if (egfx->frame_ack != NULL)
+    if (egfx != NULL && egfx->frame_ack != NULL)
     {
         egfx->frame_ack(egfx->user, queueDepth, intframeId, totalFramesDecoded);
     }
@@ -866,12 +866,16 @@ xrdp_egfx_process_capsadvertise(struct xrdp_egfx *egfx, struct stream *s)
     {
         if (!s_check_rem(s, 8))
         {
+            g_free(flagss);
+            g_free(versions);
             return 1;
         }
         in_uint32_le(s, version);
         in_uint32_le(s, capsDataLength);
         if (!s_check_rem(s, capsDataLength))
         {
+            g_free(flagss);
+            g_free(versions);
             return 1;
         }
         holdp = s->p;
