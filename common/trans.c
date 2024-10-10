@@ -306,7 +306,7 @@ trans_send_waiting(struct trans *self, int block)
 int
 trans_check_wait_objs(struct trans *self)
 {
-    tbus in_sck = (tbus) 0;
+    int in_sck = 0;
     struct trans *in_trans = (struct trans *) NULL;
     int read_bytes = 0;
     unsigned int to_read = 0;
@@ -351,15 +351,22 @@ trans_check_wait_objs(struct trans *self)
                 {
                     in_trans = trans_create(self->mode, self->in_s->size,
                                             self->out_s->size);
-                    in_trans->sck = in_sck;
-                    in_trans->type1 = TRANS_TYPE_SERVER;
-                    in_trans->status = TRANS_STATUS_UP;
-                    in_trans->is_term = self->is_term;
-                    g_file_set_cloexec(in_sck, 1);
-                    g_sck_set_non_blocking(in_sck);
-                    if (self->trans_conn_in(self, in_trans) != 0)
+                    if (in_trans != NULL)
                     {
-                        trans_delete(in_trans);
+                        in_trans->sck = in_sck;
+                        in_trans->type1 = TRANS_TYPE_SERVER;
+                        in_trans->status = TRANS_STATUS_UP;
+                        in_trans->is_term = self->is_term;
+                        g_file_set_cloexec(in_sck, 1);
+                        g_sck_set_non_blocking(in_sck);
+                        if (self->trans_conn_in(self, in_trans) != 0)
+                        {
+                            trans_delete(in_trans);
+                        }
+                    }
+                    else
+                    {
+                        g_tcp_close(in_sck);
                     }
                 }
                 else
