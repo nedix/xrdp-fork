@@ -360,30 +360,33 @@ xrdp_egfx_send_surface_to_surface(struct xrdp_egfx *egfx, int src_surface_id,
 void
 xrdp_get_system_time(LPSYSTEMTIME lpSystemTime)
 {
-	time_t ct = 0;
-	struct tm tres;
-	struct tm* stm = NULL;
-	uint16_t wMilliseconds = 0;
-	ct = time(NULL);
+    time_t ct = 0;
+    struct tm tres;
+    struct tm* stm = NULL;
+    uint16_t wMilliseconds = 0;
+    ct = time(NULL);
     struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return;
-    }
-	wMilliseconds = (uint16_t)(ts.tv_nsec / 1000000 % 1000);
-	stm = gmtime_r(&ct, &tres);
-	memset(lpSystemTime, 0, sizeof(SYSTEMTIME));
 
-	if (stm)
-	{
-		lpSystemTime->wYear = (uint16_t)(stm->tm_year + 1900);
-		lpSystemTime->wMonth = (uint16_t)(stm->tm_mon + 1);
-		lpSystemTime->wDayOfWeek = (uint16_t)stm->tm_wday;
-		lpSystemTime->wDay = (uint16_t)stm->tm_mday;
-		lpSystemTime->wHour = (uint16_t)stm->tm_hour;
-		lpSystemTime->wMinute = (uint16_t)stm->tm_min;
-		lpSystemTime->wSecond = (uint16_t)stm->tm_sec;
-		lpSystemTime->wMilliseconds = wMilliseconds;
-	}
+    memset(lpSystemTime, 0, sizeof(SYSTEMTIME));
+
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
+    {
+        wMilliseconds = (uint16_t)(ts.tv_nsec / 1000000);
+    }
+
+    stm = gmtime_r(&ct, &tres);
+
+    if (stm)
+    {
+        lpSystemTime->wYear = (uint16_t)(stm->tm_year + 1900);
+        lpSystemTime->wMonth = (uint16_t)(stm->tm_mon + 1);
+        lpSystemTime->wDayOfWeek = (uint16_t)stm->tm_wday;
+        lpSystemTime->wDay = (uint16_t)stm->tm_mday;
+        lpSystemTime->wHour = (uint16_t)stm->tm_hour;
+        lpSystemTime->wMinute = (uint16_t)stm->tm_min;
+        lpSystemTime->wSecond = (uint16_t)stm->tm_sec;
+        lpSystemTime->wMilliseconds = wMilliseconds;
+    }
 }
 
 /******************************************************************************/
@@ -405,7 +408,7 @@ xrdp_egfx_frame_start(struct xrdp_egfx_bulk *bulk, int frame_id, int timestamp)
     out_uint16_le(s, XR_RDPGFX_CMDID_STARTFRAME); /* cmdId */
     out_uint16_le(s, 0); /* flags = 0 */
     s_push_layer(s, iso_hdr, 4); /* pduLength, set later */
-    if (timestamp == 0) 
+    if (timestamp == 0)
     {
         xrdp_get_system_time(&system_time);
         timestamp = system_time.wHour << 22 |
