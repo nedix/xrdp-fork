@@ -341,21 +341,18 @@ list_dump_items(struct list *self)
     }
 }
 
-/******************************************************************************/
-/**
- * Appends a string fragment to a list
- * @param[in,out] start Pointer to start of fragment (by reference)
- * @param end Pointer to one past end of fragment
- * @param list List to append to
- * @result 1 for success
- *
- * In the event of a memory failure, 0 is returned and the list is deleted.
- */
 int
 split_string_append_fragment(const char **start, const char *end,
                              struct list *list)
 {
-    const unsigned int len = end - *start;
+    unsigned int len = end - *start;
+    // Check for an unexpected terminator in the string
+    const char *term = (const char *)memchr(*start, '\0', len);
+    if (term != NULL)
+    {
+        end = term;
+        len = end - *start;
+    }
     char *copy = (char *)malloc(len + 1);
     if (copy == NULL)
     {
