@@ -21,21 +21,24 @@
 #if defined(HAVE_CONFIG_H)
 #include <config_ac.h>
 #endif
-#include "xrdp.h"
-#include "log.h"
-#include "string_calls.h"
-#include "guid.h"
-#include "ms-rdpedisp.h"
-#include "ms-rdpbcgr.h"
-#include "scp.h"
 #include <ctype.h>
+#include <limits.h>
+
+#include "guid.h"
+#include "libxrdp.h"
+#include "log.h"
+#include "ms-rdpbcgr.h"
+#include "ms-rdpedisp.h"
+#include "scp.h"
+#include "string_calls.h"
+#include "xrdp.h"
 #include "xrdp_encoder.h"
 #include "xrdp_mm.h"
 #include "xrdp_sockets.h"
 #include "xrdp_egfx.h"
-#include "libxrdp.h"
 #include "xrdp_channel.h"
 #include <limits.h>
+#include "xrdp_tconfig.h"
 
 /* Forward declarations */
 static int
