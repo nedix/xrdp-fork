@@ -32,12 +32,11 @@
 #include "scp.h"
 #include "string_calls.h"
 #include "xrdp.h"
+#include "xrdp_channel.h"
+#include "xrdp_egfx.h"
 #include "xrdp_encoder.h"
 #include "xrdp_mm.h"
 #include "xrdp_sockets.h"
-#include "xrdp_egfx.h"
-#include "xrdp_channel.h"
-#include <limits.h>
 #include "xrdp_tconfig.h"
 
 /* Forward declarations */
@@ -45,6 +44,9 @@ static int
 xrdp_mm_chansrv_connect(struct xrdp_mm *self, const char *port);
 static void
 xrdp_mm_connect_sm(struct xrdp_mm *self);
+
+static int
+xrdp_mm_send_unicode_shutdown(struct xrdp_mm *self, struct trans *trans);
 
 /*****************************************************************************/
 struct xrdp_mm *
@@ -148,6 +150,9 @@ xrdp_mm_delete(struct xrdp_mm *self)
     {
         return;
     }
+
+    /* shutdown input method */
+    xrdp_mm_send_unicode_shutdown(self, self->chan_trans);
 
     /* free any module stuff */
     xrdp_mm_module_cleanup(self);
@@ -381,6 +386,7 @@ xrdp_mm_setup_mod1(struct xrdp_mm *self)
             self->mod->server_end_update = server_end_update;
             self->mod->server_bell_trigger = server_bell_trigger;
             self->mod->server_chansrv_in_use = server_chansrv_in_use;
+            self->mod->server_init_xkb_layout = server_init_xkb_layout;
             self->mod->server_fill_rect = server_fill_rect;
             self->mod->server_screen_blt = server_screen_blt;
             self->mod->server_paint_rect = server_paint_rect;
@@ -522,6 +528,18 @@ xrdp_mm_setup_mod2(struct xrdp_mm *self)
         if (self->mod->mod_connect(self->mod) == 0)
         {
             rv = 0; /* connect success */
+
+            // If we've received a recent TS_SYNC_EVENT, pass it on to
+            // the module so (e.g.) NumLock starts in the right state.
+            if (self->last_sync_saved)
+            {
+                int key_flags = self->last_sync_key_flags;
+                int device_flags = self->last_sync_device_flags;
+                self->last_sync_saved = 0;
+                self->mod->mod_event(self->mod, WM_KEYBRD_SYNC, key_flags,
+                                     device_flags, key_flags, device_flags);
+
+            }
         }
         else
         {
@@ -658,6 +676,73 @@ xrdp_mm_trans_process_channel_data(struct xrdp_mm *self, struct stream *s)
     }
 
     return rv;
+}
+
+/*****************************************************************************/
+static int
+xrdp_mm_send_unicode_shutdown(struct xrdp_mm *self, struct trans *trans)
+{
+    struct stream *s = trans_get_out_s(self->chan_trans, 8192);
+    if (s == NULL)
+    {
+        return 1;
+    }
+
+    out_uint32_le(s, 0);     /* version */
+    out_uint32_le(s, 8 + 8); /* size */
+    out_uint32_le(s, 25);    /* msg id */
+    out_uint32_le(s, 8);     /* size */
+    s_mark_end(s);
+
+    return trans_write_copy(self->chan_trans);
+}
+
+/*****************************************************************************/
+static int
+xrdp_mm_send_unicode_setup(struct xrdp_mm *self, struct trans *trans)
+{
+    int rv = 0;
+
+    if (self->wm->client_info->unicode_input_support == UIS_SUPPORTED)
+    {
+        struct stream *s = trans_get_out_s(self->chan_trans, 8192);
+        if (s == NULL)
+        {
+            rv = 1;
+        }
+        else
+        {
+            out_uint32_le(s, 0); /* version */
+            out_uint32_le(s, 8 + 8); /* size */
+            out_uint32_le(s, 21); /* msg id */
+            out_uint32_le(s, 8); /* size */
+            s_mark_end(s);
+
+            rv = trans_write_copy(self->chan_trans);
+        }
+    }
+
+    return rv;
+}
+
+/******************************************************************************/
+int xrdp_mm_send_unicode_to_chansrv(struct xrdp_mm *self,
+                                    int key_down,
+                                    char32_t unicode)
+{
+    struct stream *s = trans_get_out_s(self->chan_trans, 8192);
+    if (s == NULL)
+    {
+        return 1;
+    }
+    out_uint32_le(s, 0);  /* version */
+    out_uint32_le(s, 24); /* size */
+    out_uint32_le(s, 23); /* msg id */
+    out_uint32_le(s, 16); /* size */
+    out_uint32_le(s, key_down);
+    out_uint32_le(s, unicode);
+    s_mark_end(s);
+    return trans_write_copy(self->chan_trans);
 }
 
 /*****************************************************************************/
@@ -1132,6 +1217,12 @@ xrdp_mm_egfx_invalidate_wm_screen(struct xrdp_mm *self)
 static int
 dynamic_monitor_open_response(intptr_t id, int chan_id, int creation_status)
 {
+    if (id == 0 || chan_id == 0)
+    {
+        LOG(LOG_LEVEL_ERROR, "dynamic_monitor_open_response: bad input");
+        return 1;
+    }
+
     struct xrdp_process *pro;
     struct xrdp_wm *wm;
     struct stream *s;
@@ -1282,7 +1373,8 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
     int flags;
     struct ver_flags_t *ver_flags;
 
-    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise:");
+    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: Starting");
+
     self = (struct xrdp_mm *) user;
     screen = self->wm->screen;
     if (screen->data == NULL)
@@ -3865,6 +3957,15 @@ server_chansrv_in_use(struct xrdp_mod *mod)
 
     wm = (struct xrdp_wm *)(mod->wm);
     return wm->mm->use_chansrv;
+}
+
+/*****************************************************************************/
+/* Init the XKB layout */
+void
+server_init_xkb_layout(struct xrdp_mod *mod,
+                       struct xrdp_client_info *client_info)
+{
+    xrdp_init_xkb_layout(client_info);
 }
 
 
