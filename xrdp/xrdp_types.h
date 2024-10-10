@@ -24,13 +24,11 @@
 #define DEFAULT_STRING_LEN 255
 #define LOG_WINDOW_CHAR_PER_LINE 60
 
+#include "xrdp_rail.h"
+#include "xrdp_constants.h"
 #include "fifo.h"
 #include "guid.h"
-#include "scancode.h"
 #include "xrdp_client_info.h"
-#include "xrdp_constants.h"
-#include "xrdp_rail.h"
-#include "xrdp_tconfig.h"
 
 #define MAX_NR_CHANNELS 16
 #define MAX_CHANNEL_NAME 16
@@ -68,7 +66,8 @@ struct xrdp_mod
     int (*mod_server_monitor_resize)(struct xrdp_mod *v,
                                      int width, int height,
                                      int num_monitors,
-                                     const struct monitor_info *monitors);
+                                     const struct monitor_info *monitors,
+                                     int *in_progress);
     int (*mod_server_monitor_full_invalidate)(struct xrdp_mod *v,
             int width, int height);
     int (*mod_server_version_message)(struct xrdp_mod *v);
@@ -124,8 +123,6 @@ struct xrdp_mod
                                   int total_data_len, int flags);
     int (*server_bell_trigger)(struct xrdp_mod *v);
     int (*server_chansrv_in_use)(struct xrdp_mod *v);
-    void (*server_init_xkb_layout)(struct xrdp_mod *v,
-                                   struct xrdp_client_info *client_info);
     /* off screen bitmaps */
     int (*server_create_os_surface)(struct xrdp_mod *v, int rdpindex,
                                     int width, int height);
@@ -194,7 +191,7 @@ struct xrdp_mod
     int (*server_egfx_cmd)(struct xrdp_mod *v,
                            char *cmd, int cmd_bytes,
                            char *data, int data_bytes);
-    tintptr server_dumby[100 - 51]; /* align, 100 minus the number of server
+    tintptr server_dumby[100 - 50]; /* align, 100 minus the number of server
                                      functions above */
     /* common */
     tintptr handle; /* pointer to self as int */
@@ -356,10 +353,8 @@ enum display_resize_state
     WMRZ_EGFX_CONN_CLOSED,
     WRMZ_EGFX_DELETE,
     WMRZ_SERVER_MONITOR_RESIZE,
-    WMRZ_SERVER_VERSION_MESSAGE_START,
     WMRZ_SERVER_MONITOR_MESSAGE_PROCESSING,
     WMRZ_SERVER_MONITOR_MESSAGE_PROCESSED,
-    WMRZ_XRDP_CORE_RESIZE,
     WMRZ_XRDP_CORE_RESET,
     WMRZ_XRDP_CORE_RESET_PROCESSING,
     WMRZ_XRDP_CORE_RESET_PROCESSED,
@@ -380,13 +375,10 @@ enum display_resize_state
      (status) == WMRZ_EGFX_CONN_CLOSED ? "WMRZ_EGFX_CONN_CLOSED" : \
      (status) == WRMZ_EGFX_DELETE ? "WMRZ_EGFX_DELETE" : \
      (status) == WMRZ_SERVER_MONITOR_RESIZE ? "WMRZ_SERVER_MONITOR_RESIZE" : \
-     (status) == WMRZ_SERVER_VERSION_MESSAGE_START ? \
-     "WMRZ_SERVER_VERSION_MESSAGE_START" : \
      (status) == WMRZ_SERVER_MONITOR_MESSAGE_PROCESSING ? \
      "WMRZ_SERVER_MONITOR_MESSAGE_PROCESSING" : \
      (status) == WMRZ_SERVER_MONITOR_MESSAGE_PROCESSED ? \
      "WMRZ_SERVER_MONITOR_MESSAGE_PROCESSED" : \
-     (status) == WMRZ_XRDP_CORE_RESIZE ? "WMRZ_XRDP_CORE_RESIZE" : \
      (status) == WMRZ_XRDP_CORE_RESET ? "WMRZ_XRDP_CORE_RESET" : \
      (status) == WMRZ_XRDP_CORE_RESET_PROCESSING ? \
      "WMRZ_XRDP_CORE_RESET_PROCESSING" : \
@@ -452,10 +444,6 @@ struct xrdp_mm
     struct display_control_monitor_layout_data *resize_data;
     struct list *resize_queue;
     tbus resize_ready;
-    /* Last sync event if a module isn't loaded */
-    int last_sync_saved;
-    int last_sync_key_flags;
-    int last_sync_device_flags;
 };
 
 struct xrdp_key_info
@@ -466,18 +454,14 @@ struct xrdp_key_info
 
 struct xrdp_keymap
 {
-    // These arrays are indexed by a return from scancode_to_index()
-    struct xrdp_key_info keys_noshift[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_shift[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_altgr[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_shiftaltgr[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_capslock[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_capslockaltgr[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_shiftcapslock[SCANCODE_MAX_INDEX + 1];
-    struct xrdp_key_info keys_shiftcapslockaltgr[SCANCODE_MAX_INDEX + 1];
-    // NumLock is restricted to a much smaller set of keys
-    struct xrdp_key_info keys_numlock[SCANCODE_MAX_NUMLOCK -
-                                          SCANCODE_MIN_NUMLOCK + 1];
+    struct xrdp_key_info keys_noshift[256];
+    struct xrdp_key_info keys_shift[256];
+    struct xrdp_key_info keys_altgr[256];
+    struct xrdp_key_info keys_shiftaltgr[256];
+    struct xrdp_key_info keys_capslock[256];
+    struct xrdp_key_info keys_capslockaltgr[256];
+    struct xrdp_key_info keys_shiftcapslock[256];
+    struct xrdp_key_info keys_shiftcapslockaltgr[256];
 };
 
 /* the window manager */
@@ -558,15 +542,11 @@ struct xrdp_wm
     int current_pointer;
     int mouse_x;
     int mouse_y;
-    /* keyboard info (indexed by a return from scancode_to_index()) */
-    int keys[SCANCODE_MAX_INDEX + 1]; /* key states 0 up 1 down*/
+    /* keyboard info */
+    int keys[256]; /* key states 0 up 1 down*/
     int caps_lock;
     int scroll_lock;
     int num_lock;
-
-    /* Unicode input */
-    int last_high_surrogate_key_up;
-    int last_high_surrogate_key_down;
     /* client info */
     struct xrdp_client_info *client_info;
     /* session log */
@@ -586,9 +566,6 @@ struct xrdp_wm
 
     /* configuration derived from xrdp.ini */
     struct xrdp_config *xrdp_config;
-
-    /* configuration derived from gfx.toml */
-    struct xrdp_tconfig_gfx *gfx_config;
 
     struct xrdp_region *screen_dirty_region;
     int last_screen_draw_time;
@@ -758,10 +735,6 @@ struct xrdp_startup_params
     int tcp_nodelay;
     int tcp_keepalive;
     int use_vsock;
-    // These should be local users/groups, and so we shouldn't need
-    // a lot of storage for them.
-    char runtime_user[64];
-    char runtime_group[64];
 };
 
 /*

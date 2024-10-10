@@ -79,7 +79,7 @@ END_TEST
 /******************************************************************************/
 START_TEST(test_g_signal_child_stop_1)
 {
-    struct proc_exit_status e;
+    struct exit_status e;
 
     g_reset_wait_obj(g_wobj1);
     ck_assert_int_eq(g_is_wait_obj_set(g_wobj1), 0);
@@ -98,7 +98,7 @@ START_TEST(test_g_signal_child_stop_1)
 
     e = g_waitpid_status(pid);
 
-    ck_assert_int_eq(e.reason, E_PXR_STATUS_CODE);
+    ck_assert_int_eq(e.reason, E_XR_STATUS_CODE);
     ck_assert_int_eq(e.val, 45);
 
     // Try another one to make sure the signal handler is still in place.
@@ -111,7 +111,7 @@ START_TEST(test_g_signal_child_stop_1)
         // Before raising the signal, change directory to a non-writeable
         // one to avoid generating a corefile.
         g_set_current_dir("/");
-        raise(SIGUSR2);
+        raise(SIGSEGV);
     }
     ck_assert_int_ne(pid, 0);
     g_obj_wait(&g_wobj1, 1, NULL, 0, 2000);
@@ -119,8 +119,8 @@ START_TEST(test_g_signal_child_stop_1)
 
     e = g_waitpid_status(pid);
 
-    ck_assert_int_eq(e.reason, E_PXR_SIGNAL);
-    ck_assert_int_eq(e.val, SIGUSR2);
+    ck_assert_int_eq(e.reason, E_XR_SIGNAL);
+    ck_assert_int_eq(e.val, SIGSEGV);
 
     // Clean up
     g_signal_child_stop(NULL);
@@ -136,7 +136,7 @@ START_TEST(test_g_signal_child_stop_2)
     int pids[CHILD_COUNT];
     unsigned int i;
 
-    struct proc_exit_status e;
+    struct exit_status e;
 
     g_reset_wait_obj(g_wobj1);
     ck_assert_int_eq(g_is_wait_obj_set(g_wobj1), 0);
@@ -160,7 +160,7 @@ START_TEST(test_g_signal_child_stop_2)
     for (i = 0 ; i < CHILD_COUNT; ++i)
     {
         e = g_waitpid_status(pids[i]);
-        ck_assert_int_eq(e.reason, E_PXR_STATUS_CODE);
+        ck_assert_int_eq(e.reason, E_XR_STATUS_CODE);
         ck_assert_int_eq(e.val, (i + 1));
     }
 
@@ -249,12 +249,12 @@ START_TEST(test_waitpid_not_interrupted_by_sig)
     g_reset_wait_obj(g_wobj1);
     g_set_alarm(set_wobj1, 1);
 
-    struct proc_exit_status e = g_waitpid_status(child_pid);
+    struct exit_status e = g_waitpid_status(child_pid);
     // We should have had the alarm...
     ck_assert_int_ne(g_is_wait_obj_set(g_wobj1), 0);
 
     // ..and got the status of the child
-    ck_assert_int_eq(e.reason, E_PXR_STATUS_CODE);
+    ck_assert_int_eq(e.reason, E_XR_STATUS_CODE);
     ck_assert_int_eq(e.val, 42);
 
     // Clean up

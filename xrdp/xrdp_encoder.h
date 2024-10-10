@@ -30,11 +30,9 @@ struct xrdp_encoder
     struct fifo *fifo_processed;
     tbus mutex;
     int (*process_enc)(struct xrdp_encoder *self, struct xrdp_enc_data *enc);
-    void *codec_handle_jpg;
-    void *codec_handle_nvenc;
-    void *codec_handle_openh264;
     void *codec_handle_rfx;
-    void *codec_handle_x264;
+    void *codec_handle_jpg;
+    void *codec_handle_h264;
     void *codec_handle_prfx_gfx[16];
     void *codec_handle_h264_gfx[16];
     int frame_id_client; /* last frame id received from client */
@@ -65,7 +63,7 @@ struct xrdp_enc_surface_command
     int top;
     int width;
     int height;
-    enum xrdp_encoder_flags flags;
+    int flags;
     int frame_id;
 };
 
@@ -77,16 +75,6 @@ struct xrdp_enc_gfx_cmd
     int data_bytes;
 };
 
-struct xrdp_enc_rect
-{
-    short x;
-    short y;
-    short cx;
-    short cy;
-};
-
-struct xrdp_enc_rect calculate_bounding_box(short* boxes, int numBoxes);
-
 typedef struct xrdp_enc_data XRDP_ENC_DATA;
 
 #define ENC_DONE_FLAGS_GFX_BIT      0
@@ -95,15 +83,17 @@ typedef struct xrdp_enc_data XRDP_ENC_DATA;
 /* used when scheduling tasks from xrdp_encoder.c */
 struct xrdp_enc_data_done
 {
-    int out_data_bytes;
     int comp_bytes;
     int pad_bytes;
     char *comp_pad_data;
     struct xrdp_enc_data *enc;
     int last; /* true is this is last message for enc */
     int continuation; /* true if this isn't the start of a frame */
-    struct xrdp_enc_rect rect;
-    enum xrdp_encoder_flags flags;
+    int x;
+    int y;
+    int cx;
+    int cy;
+    int flags; /* ENC_DONE_FLAGS_* */
     int frame_id;
 };
 

@@ -45,32 +45,17 @@ read_entire_packet(struct stream *src, struct stream **dest, int chan_flags,
     {
         /* packet not fragmented */
         xstream_new(ls, total_length);
-        if (ls->data != NULL)
-        {
-            xstream_copyin(ls, src->p, length);
-            s_mark_end(ls);
-            ls->p = ls->data;
-            *dest = ls;
-            return 1;
-        }
-        else
-        {
-            LOG(LOG_LEVEL_ERROR, "read_entire_packet: failed to allocate memory for stream");
-            xstream_free(ls);
-            return 0;
-        }
+        xstream_copyin(ls, src->p, length);
+        s_mark_end(ls);
+        ls->p = ls->data;
+        *dest = ls;
+        return 1;
     }
 
     /* is this the first fragmented packet? */
     if (chan_flags & 1)
     {
         xstream_new(ls, total_length);
-        if (ls->data == NULL)
-        {
-            LOG(LOG_LEVEL_ERROR, "read_entire_packet: failed to allocate memory for stream");
-            xstream_free(ls);
-            return 0;
-        }
         *dest = ls;
     }
     else
@@ -85,16 +70,10 @@ read_entire_packet(struct stream *src, struct stream **dest, int chan_flags,
     {
         /* terminate and rewind stream */
         s_mark_end(ls);
-        if (ls->data != NULL)
-        {
-            ls->p = ls->data;
-        }
-        else
-        {
-            LOG(LOG_LEVEL_ERROR, "read_entire_packet: stream data is NULL");
-        }
+        ls->p = ls->data;
         return 1;
     }
 
     return 0;
 }
+

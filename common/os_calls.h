@@ -23,16 +23,16 @@
 
 #include "arch.h"
 
-enum proc_exit_reason
+enum exit_reason
 {
-    E_PXR_STATUS_CODE = 0, ///< 'val' contains exit status
-    E_PXR_SIGNAL, ///< 'val' contains a signal number
-    E_PXR_UNEXPECTED
+    E_XR_STATUS_CODE = 0, ///< 'val' contains exit status
+    E_XR_SIGNAL, ///< 'val' contains a signal number
+    E_XR_UNEXPECTED
 };
 
-struct proc_exit_status
+struct exit_status
 {
-    enum proc_exit_reason reason;
+    enum exit_reason reason;
     int val;
 };
 
@@ -53,16 +53,15 @@ struct list;
 #define g_close_wait_obj g_delete_wait_obj
 
 int      g_rm_temp_dir(void);
-int      g_mk_socket_path(const char *app_name);
 void     g_init(const char *app_name);
 void     g_deinit(void);
-void     g_printf(const char *format, ...) printflike(1, 2);
-void     g_sprintf(char *dest, const char *format, ...) \
+void g_printf(const char *format, ...) printflike(1, 2);
+void g_sprintf(char *dest, const char *format, ...) \
 printflike(2, 3);
-int      g_snprintf(char *dest, int len, const char *format, ...) \
+int  g_snprintf(char *dest, int len, const char *format, ...) \
 printflike(3, 4);
-void     g_writeln(const char *format, ...) printflike(1, 2);
-void     g_write(const char *format, ...) printflike(1, 2);
+void g_writeln(const char *format, ...) printflike(1, 2);
+void g_write(const char *format, ...) printflike(1, 2);
 void     g_hexdump(const char *p, int len);
 int      g_getchar(void);
 int      g_tcp_set_no_delay(int sck);
@@ -125,7 +124,6 @@ int      g_sck_recv_fd_set(int sck, void *ptr, unsigned int len,
  */
 int      g_sck_send_fd_set(int sck, const void *ptr, unsigned int len,
                            int fds[], unsigned int fdcount);
-int      g_alloc_shm_map_fd(void **addr, int *fd, size_t size);
 int      g_sck_last_error_would_block(int sck);
 int      g_sck_socket_ok(int sck);
 /**
@@ -340,7 +338,6 @@ void     g_signal_pipe(void (*func)(int));
 void     g_signal_usr1(void (*func)(int));
 int      g_fork(void);
 int      g_setgid(int pid);
-int      g_drop_privileges(const char *user, const char *group);
 int      g_initgroups(const char *user);
 int      g_getuid(void);
 int      g_getgid(void);
@@ -355,9 +352,9 @@ int      g_setlogin(const char *name);
  */
 int      g_set_allusercontext(int uid);
 #endif
-int      g_waitchild(struct proc_exit_status *e);
+int      g_waitchild(struct exit_status *e);
 int      g_waitpid(int pid);
-struct proc_exit_status g_waitpid_status(int pid);
+struct exit_status g_waitpid_status(int pid);
 /*
  * Sets the process group ID of the indicated process to the specified value.
  * (POSIX.1)
@@ -374,12 +371,6 @@ int      g_exit(int exit_code);
 int      g_getpid(void);
 int      g_sigterm(int pid);
 int      g_sighup(int pid);
-/*
- * Is a particular PID active?
- * @param pid PID to check
- * Returns boolean
- */
-int      g_pid_is_active(int pid);
 int      g_getuser_info_by_name(const char *username, int *uid, int *gid,
                                 char **shell, char **dir, char **gecos);
 int      g_getuser_info_by_uid(int uid, char **username, int *gid,

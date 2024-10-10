@@ -99,13 +99,6 @@ struct sockaddr_hvs
 #include "string_calls.h"
 #include "log.h"
 #include "xrdp_constants.h"
-#include "xrdp_sockets.h"
-
-/* for clearenv() */
-#if defined(_WIN32)
-#else
-extern char **environ;
-#endif
 
 #if defined(__linux__)
 #include <linux/unistd.h>
@@ -153,28 +146,6 @@ g_rm_temp_dir(void)
 }
 
 /*****************************************************************************/
-int
-g_mk_socket_path(const char *app_name)
-{
-    if (!g_directory_exist(XRDP_SOCKET_PATH))
-    {
-        if (!g_create_path(XRDP_SOCKET_PATH"/"))
-        {
-            /* if failed, still check if it got created by someone else */
-            if (!g_directory_exist(XRDP_SOCKET_PATH))
-            {
-                LOG(LOG_LEVEL_ERROR,
-                    "g_mk_socket_path: g_create_path(%s) failed",
-                    XRDP_SOCKET_PATH);
-                return 1;
-            }
-        }
-        g_chmod_hex(XRDP_SOCKET_PATH, 0x1777);
-    }
-    return 0;
-}
-
-/*****************************************************************************/
 void
 g_init(const char *app_name)
 {
@@ -182,36 +153,6 @@ g_init(const char *app_name)
     WSADATA wsadata;
 
     WSAStartup(2, &wsadata);
-#endif
-#if defined(XRDP_NVENC) || defined(XRDP_VANILLA_NVIDIA_CODEC)
-    if (g_strcmp(app_name, "xrdp") == 0)
-    {
-        /* call cuInit() to initalize the nvidia drivers */
-        /* TODO create an issue on nvidia forums to figure out why we need to
-        *  do this */
-        if (g_fork() == 0)
-        {
-            typedef int (*cu_init_proc)(int flags);
-            cu_init_proc cu_init;
-            long lib;
-            char cuda_lib_name[] = "libcuda.so";
-            char cuda_func_name[] = "cuInit";
-
-            lib = g_load_library(cuda_lib_name);
-            if (lib != 0)
-            {
-                cu_init = (cu_init_proc)
-                          g_get_proc_address(lib, cuda_func_name);
-                if (cu_init != NULL)
-                {
-                    cu_init(0);
-                }
-            }
-            log_end();
-            g_deinit();
-            g_exit(0);
-        }
-    }
 #endif
 }
 
@@ -225,17 +166,6 @@ g_deinit(void)
     fflush(stdout);
     fflush(stderr);
     g_rm_temp_dir();
-}
-
-/*****************************************************************************/
-/* free the memory pointed to by ptr, ptr can be zero */
-void
-g_free(void *ptr)
-{
-    if (ptr != 0)
-    {
-        ptr = 0; // Set the pointer to 0 to prevent double-free
-    }
 }
 
 /*****************************************************************************/
@@ -497,23 +427,6 @@ g_tcp_socket(void)
             option_value = 1;
             option_len = sizeof(option_value);
             if (setsockopt(rv, SOL_SOCKET, SO_REUSEADDR, (char *)&option_value,
-                           option_len) < 0)
-            {
-                LOG(LOG_LEVEL_ERROR, "g_tcp_socket: setsockopt() failed");
-            }
-        }
-    }
-
-    option_len = sizeof(option_value);
-
-    if (getsockopt(rv, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
-                   &option_len) == 0)
-    {
-        if (option_value < (1024 * 32))
-        {
-            option_value = 1024 * 32;
-            option_len = sizeof(option_value);
-            if (setsockopt(rv, SOL_SOCKET, SO_SNDBUF, (char *)&option_value,
                            option_len) < 0)
             {
                 LOG(LOG_LEVEL_ERROR, "g_tcp_socket: setsockopt() failed");
@@ -1617,39 +1530,6 @@ g_sck_send_fd_set(int sck, const void *ptr, unsigned int len,
     return rv;
 }
 
-/******************************************************************************/
-int
-g_alloc_shm_map_fd(void **addr, int *fd, size_t size)
-{
-    int lfd = -1;
-    void *laddr;
-    char name[128];
-    static unsigned int autoinc;
-
-    snprintf(name, 128, "/%8.8X%8.8X", getpid(), autoinc++);
-    lfd = shm_open(name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (lfd == -1)
-    {
-        return 1;
-    }
-    shm_unlink(name);
-    if (ftruncate(lfd, size) == -1)
-    {
-        close(lfd);
-        return 2;
-    }
-    /* map fd to address space */
-    laddr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, lfd, 0);
-    if (laddr == MAP_FAILED)
-    {
-        close(lfd);
-        return 3;
-    }
-    *addr = laddr;
-    *fd = lfd;
-    return 0;
-}
-
 /*****************************************************************************/
 /* returns boolean */
 int
@@ -2567,19 +2447,15 @@ mode_t_to_hex(mode_t mode)
 int
 g_file_duplicate_on(int fd, int target_fd)
 {
-    const int rv = dup2(fd, target_fd);
+    int rv = (dup2(fd, target_fd) >= 0);
 
-    if (rv == -1)
+    if (rv < 0)
     {
         LOG(LOG_LEVEL_ERROR, "Can't clone file %d as file %d [%s]",
             fd, target_fd, g_get_strerror());
     }
-    else if (rv != target_fd)
-    {
-        close(fd);
-    }
 
-    return rv >= 0;
+    return rv;
 }
 
 /*****************************************************************************/
@@ -2733,7 +2609,7 @@ g_create_dir(const char *dirname)
 #if defined(_WIN32)
     return CreateDirectoryA(dirname, 0); // test this
 #else
-    return mkdir(dirname, (mode_t) - 1) == 0;
+    return mkdir(dirname, 0777) == 0;
 #endif
 }
 
@@ -2965,13 +2841,6 @@ g_execvp(const char *p1, char *args[])
     char args_str[ARGS_STR_LEN];
     int args_len;
 
-    if (p1 == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR, "g_execvp: Null pointer passed to 1st parameter expecting 'nonnull'");
-        errno = EINVAL;
-        return -1;
-    }
-
     args_len = 0;
     while (args[args_len] != NULL)
     {
@@ -3049,7 +2918,6 @@ g_execlp3(const char *a1, const char *a2, const char *a3)
         "returned errno: %d, description: %s",
         a1, args_str, g_get_errno(), g_get_strerror());
 
-    g_mk_socket_path(0);
     return rv;
 #endif
 }
@@ -3276,11 +3144,7 @@ g_fork(void)
 
     rv = fork();
 
-    if (rv == 0) /* child */
-    {
-        g_mk_socket_path(0);
-    }
-    else if (rv == -1) /* error */
+    if (rv == -1) /* error */
     {
         LOG(LOG_LEVEL_ERROR,
             "Process fork failed with errno: %d, description: %s",
@@ -3301,48 +3165,6 @@ g_setgid(int pid)
 #else
     return setgid(pid);
 #endif
-}
-
-/*****************************************************************************/
-/* Used by daemonizing code */
-/* returns error, zero is success, non zero is error */
-int
-g_drop_privileges(const char *user, const char *group)
-{
-    int rv = 1;
-    int uid;
-    int gid;
-    if (g_getuser_info_by_name(user, &uid, NULL, NULL, NULL, NULL) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "Unable to get UID for user '%s' [%s]", user,
-            g_get_strerror());
-    }
-    else if (g_getgroup_info(group, &gid) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "Unable to get GID for group '%s' [%s]", group,
-            g_get_strerror());
-    }
-    else if (initgroups(user, gid) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "Unable to init groups for '%s' [%s]", user,
-            g_get_strerror());
-    }
-    else if (g_setgid(gid) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "Unable to set group to '%s' [%s]", group,
-            g_get_strerror());
-    }
-    else if (g_setuid(uid) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "Unable to set user to '%s' [%s]", user,
-            g_get_strerror());
-    }
-    else
-    {
-        rv = 0;
-    }
-
-    return rv;
 }
 
 /*****************************************************************************/
@@ -3464,10 +3286,10 @@ g_set_allusercontext(int uid)
 /*****************************************************************************/
 /* does not work in win32
    returns pid of process that exits or zero if signal occurred
-   a proc_exit_status struct can optionally be passed in to get the
+   an exit_status struct can optionally be passed in to get the
    exit status of the child */
 int
-g_waitchild(struct proc_exit_status *e)
+g_waitchild(struct exit_status *e)
 {
 #if defined(_WIN32)
     return 0;
@@ -3475,21 +3297,21 @@ g_waitchild(struct proc_exit_status *e)
     int wstat;
     int rv;
 
-    struct proc_exit_status dummy;
+    struct exit_status dummy;
 
     if (e == NULL)
     {
         e = &dummy;  // Set this, then throw it away
     }
 
-    e->reason = E_PXR_UNEXPECTED;
+    e->reason = E_XR_UNEXPECTED;
     e->val = 0;
 
     rv = waitpid(-1, &wstat, WNOHANG);
 
     if (rv == -1)
     {
-        if (errno == EINTR) /* signal occurred */
+        if (errno == EINTR)
         {
             /* This shouldn't happen as signal handlers use SA_RESTART */
             rv = 0;
@@ -3497,12 +3319,12 @@ g_waitchild(struct proc_exit_status *e)
     }
     else if (WIFEXITED(wstat))
     {
-        e->reason = E_PXR_STATUS_CODE;
+        e->reason = E_XR_STATUS_CODE;
         e->val = WEXITSTATUS(wstat);
     }
     else if (WIFSIGNALED(wstat))
     {
-        e->reason = E_PXR_SIGNAL;
+        e->reason = E_XR_SIGNAL;
         e->val = WTERMSIG(wstat);
     }
 
@@ -3543,14 +3365,10 @@ g_waitpid(int pid)
 
    Note that signal handlers are established with BSD-style semantics,
    so this call is NOT interrupted by a signal  */
-struct proc_exit_status
+struct exit_status
 g_waitpid_status(int pid)
 {
-    struct proc_exit_status exit_status =
-    {
-        .reason = E_PXR_UNEXPECTED,
-        .val = 0
-    };
+    struct exit_status exit_status = {.reason = E_XR_UNEXPECTED, .val = 0};
 
 #if !defined(_WIN32)
     if (pid > 0)
@@ -3565,12 +3383,12 @@ g_waitpid_status(int pid)
         {
             if (WIFEXITED(status))
             {
-                exit_status.reason = E_PXR_STATUS_CODE;
+                exit_status.reason = E_XR_STATUS_CODE;
                 exit_status.val = WEXITSTATUS(status);
             }
             if (WIFSIGNALED(status))
             {
-                exit_status.reason = E_PXR_SIGNAL;
+                exit_status.reason = E_XR_SIGNAL;
                 exit_status.val = WTERMSIG(status);
             }
         }
@@ -3672,12 +3490,6 @@ g_sigterm(int pid)
 #else
     return kill(pid, SIGTERM);
 #endif
-}
-
-/*****************************************************************************/
-int g_pid_is_active(int pid)
-{
-    return (kill(pid, 0) == 0);
 }
 
 /*****************************************************************************/

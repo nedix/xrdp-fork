@@ -299,14 +299,14 @@ usage(void)
 
 
 /*****************************************************************************/
-static void
+void
 proxy_shutdown(int sig)
 {
     LOG(LOG_LEVEL_INFO, "shutting down");
     g_terminated = 1;
 }
 
-static void
+void
 clear_counters(int sig)
 {
     LOG(LOG_LEVEL_DEBUG, "cleared counters at: local_io_count: %d remote_io_count: %d",

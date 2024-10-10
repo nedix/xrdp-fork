@@ -20,21 +20,21 @@ jobs:
           - CC: gcc
             feature_set: min
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: false
             DISTCHECK: false
 
           - CC: g++
             feature_set: min
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: false
             DISTCHECK: false
 
           - CC: clang
             feature_set: min
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: false
             DISTCHECK: false
 
@@ -42,33 +42,23 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: true
             DISTCHECK: true
 
           - CC: g++
             feature_set: max
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: false
             DISTCHECK: false
 
           - CC: clang
             feature_set: max
             arch: amd64
-            os: ubuntu-22.04
-            unittests: true
-            DISTCHECK: true
-
-          - CC: clang
-            feature_set: max
-            arch: amd64
             os: ubuntu-latest
             unittests: true
-            DISTCHECK: false
-            name_extra: and AddressSanitized
-            CFLAGS: "-fsanitize=address -ggdb"
-            LDFLAGS: "-fsanitize=address"
+            DISTCHECK: true
 
           # Maximal debug 64-bit arch builds
           # Check we can also do a static build without
@@ -76,7 +66,7 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: amd64
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: true
             DISTCHECK: false
             name_extra: and DEBUG
@@ -86,39 +76,31 @@ jobs:
           - CC: gcc
             feature_set: max
             arch: i386
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: true
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
-            CFLAGS: "-m32"
-            LDFLAGS: "-m32"
 
           - CC: g++
             feature_set: max
             arch: i386
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: false
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
-            CFLAGS: "-m32"
-            LDFLAGS: "-m32"
 
           - CC: clang
             feature_set: max
             arch: i386
-            os: ubuntu-22.04
+            os: ubuntu-latest
             unittests: true
             DISTCHECK: false
             name_extra: for 32-bit arch (legacy OS)
-            CFLAGS: "-m32"
-            LDFLAGS: "-m32"
 
     name: ${{ matrix.feature_set }} features with ${{ matrix.CC }} ${{ matrix.name_extra }}
     runs-on: ${{ matrix.os }}
     env:
       CC: ${{ matrix.CC }}
-      CFLAGS: ${{ matrix.CFLAGS }}
-      LDFLAGS: ${{ matrix.LDFLAGS }}
 
       # HACK (2020-11-16): github actions doesn't support YAML anchors/aliases to
       # avoid repeating long config values. So instead the config values are defined
@@ -128,17 +110,18 @@ jobs:
       # define the standard environment variable used in the rest of the steps.
       CONF_FLAGS_amd64_min: "--disable-ipv6 --disable-jpeg --disable-fuse --disable-mp3lame
                   --disable-fdkaac --disable-opus --disable-rfxcodec --disable-painter
-                  --disable-pixman --disable-utmp"
-      CONF_FLAGS_amd64_max: "--enable-ibus --enable-ipv6 --enable-jpeg --enable-fuse
-                  --enable-mp3lame --enable-fdkaac --enable-opus --enable-rfxcodec
-                  --enable-painter --enable-pixman --enable-utmp
-                  --with-imlib2 --with-freetype2 --enable-tests --with-x264"
-      CONF_FLAGS_i386_max: "--enable-ibus --enable-ipv6 --enable-jpeg
-                  --enable-mp3lame --enable-opus --enable-rfxcodec
-                  --enable-painter --disable-pixman --with-imlib2
-                  --with-freetype2 --host=i686-linux --enable-tests"
+                  --disable-pixman"
+      CONF_FLAGS_amd64_max: "--enable-ipv6 --enable-jpeg --enable-fuse --enable-mp3lame
+                  --enable-fdkaac --enable-opus --enable-rfxcodec --enable-painter
+                  --enable-pixman --with-imlib2 --with-freetype2 --enable-tests"
+      CONF_FLAGS_i386_max: "--enable-ipv6 --enable-jpeg --enable-mp3lame
+                  --enable-opus --enable-rfxcodec --enable-painter
+                  --disable-pixman --with-imlib2 --with-freetype2
+                  --host=i686-linux --enable-tests"
 
       PKG_CONFIG_PATH_i386: "/usr/lib/i386-linux-gnu/pkgconfig"
+      CFLAGS_i386: "-m32"
+      LDFLAGS_i386: "-m32"
     steps:
       - name: "Define feature and arch dependent environment variables"
         # Note: any "variable=value" written to the $GITHUB_ENV file will be
@@ -147,6 +130,8 @@ jobs:
         run: |
           echo "CONF_FLAGS=$CONF_FLAGS_${{ matrix.arch }}_${{ matrix.feature_set }} ${{ matrix.CONF_FLAGS_EXTRA }}" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH_${{ matrix.arch }}" >> $GITHUB_ENV
+          echo "CFLAGS=$CFLAGS_${{ matrix.arch }}" >> $GITHUB_ENV
+          echo "LDFLAGS=$LDFLAGS_${{ matrix.arch }}" >> $GITHUB_ENV
       - uses: actions/checkout@v4
       - name: "Install Dependencies"
         # See https://github.com/actions/runner-images/issues/7192
@@ -161,7 +146,7 @@ jobs:
         run: make -j $(nproc)
       - name: unittests
         if: ${{ matrix.unittests }}
-        run: make check -j $(nproc) || (cat tests/*/test-suite.log && exit 1)
+        run: make check -j $(nproc)
       - name: distcheck
         id: dist_check
         if: ${{ matrix.DISTCHECK }}
@@ -175,12 +160,12 @@ jobs:
 
   cppcheck:
     name: cppcheck
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       CC: gcc
       # This is required to use a version of cppcheck other than that
       # supplied with the operating system
-      CPPCHECK_VER: "2.15.0"
+      CPPCHECK_VER: "2.13.0"
       CPPCHECK_REPO: https://github.com/danmar/cppcheck.git
     steps:
       # Set steps.os.outputs.image to the specific OS (e.g. 'ubuntu20')
@@ -204,12 +189,12 @@ jobs:
 
   code_formatting_check:
     name: code formatting check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     env:
       CC: gcc
       # This is required to use a version of astyle other than that
       # supplied with the operating system
-      ASTYLE_VER: 3.4.14
+      ASTYLE_VER: 3.4.12
       ASTYLE_REPO: https://gitlab.com/saalen/astyle.git
     steps:
       # Set steps.os.outputs.image to the specific OS (e.g. 'ubuntu20')

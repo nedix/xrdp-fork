@@ -51,7 +51,6 @@
 #include "trans.h"
 #include "chansrv.h"
 #include "list.h"
-#include "smartcard_pcsc.h"
 
 #if PCSC_STANDIN
 
@@ -148,7 +147,7 @@ get_uds_client_by_id(int uds_client_id)
 }
 
 /*****************************************************************************/
-static struct pcsc_context *
+struct pcsc_context *
 get_pcsc_context_by_app_context(struct pcsc_uds_client *uds_client,
                                 tui32 app_context)
 {
@@ -176,7 +175,7 @@ get_pcsc_context_by_app_context(struct pcsc_uds_client *uds_client,
 }
 
 /*****************************************************************************/
-static struct pcsc_card *
+struct pcsc_card *
 get_pcsc_card_by_app_card(struct pcsc_uds_client *uds_client,
                           tui32 app_card, struct pcsc_context **acontext)
 {
@@ -442,7 +441,7 @@ scard_pcsc_check_wait_objs(void)
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_establish_context(struct trans *con, struct stream *in_s)
 {
     int dwScope;
@@ -526,7 +525,7 @@ scard_function_establish_context_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_release_context(struct trans *con, struct stream *in_s)
 {
     int hContext;
@@ -602,7 +601,7 @@ struct pcsc_list_readers
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_list_readers(struct trans *con, struct stream *in_s)
 {
     int hContext;
@@ -663,7 +662,7 @@ scard_process_list_readers(struct trans *con, struct stream *in_s)
  * The string is guaranteed to have at least the returned number of NULL
  * characters in it
  */
-static unsigned int
+unsigned int
 count_multistring_elements(const char *str, unsigned int len)
 {
     unsigned int rv = 0;
@@ -823,7 +822,7 @@ scard_function_list_readers_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_connect(struct trans *con, struct stream *in_s)
 {
     int hContext;
@@ -926,15 +925,15 @@ scard_function_connect_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_disconnect(struct trans *con, struct stream *in_s)
 {
     int hCard;
     int dwDisposition;
     struct pcsc_uds_client *uds_client;
     void *user_data;
-    struct pcsc_context *lcontext = 0;
-    struct pcsc_card *lcard = 0;
+    struct pcsc_context *lcontext;
+    struct pcsc_card *lcard;
 
     LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_process_disconnect:");
     uds_client = (struct pcsc_uds_client *) (con->callback_data);
@@ -996,7 +995,7 @@ scard_function_disconnect_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_begin_transaction(struct trans *con, struct stream *in_s)
 {
     int hCard;
@@ -1066,7 +1065,7 @@ scard_function_begin_transaction_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_end_transaction(struct trans *con, struct stream *in_s)
 {
     int hCard;
@@ -1158,7 +1157,7 @@ struct pcsc_transmit
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_transmit(struct trans *con, struct stream *in_s)
 {
     int hCard;
@@ -1286,11 +1285,8 @@ scard_function_transmit_return(void *user_data,
     out_uint32_le(out_s, recv_ior.cbPciLength);
     out_uint32_le(out_s, recv_ior.extra_bytes);
     out_uint8a(out_s, recv_ior.extra_data, recv_ior.extra_bytes);
-    if (recvBuf != NULL)
-    {
-        out_uint32_le(out_s, cbRecvLength);
-        out_uint8a(out_s, recvBuf, cbRecvLength);
-    }
+    out_uint32_le(out_s, cbRecvLength);
+    out_uint8a(out_s, recvBuf, cbRecvLength);
     out_uint32_le(out_s, status); /* SCARD_S_SUCCESS status */
     s_mark_end(out_s);
     bytes = (int) (out_s->end - out_s->data);
@@ -1302,7 +1298,7 @@ scard_function_transmit_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_control(struct trans *con, struct stream *in_s)
 {
     int hCard;
@@ -1348,92 +1344,52 @@ scard_function_control_return(void *user_data,
                               struct stream *in_s,
                               int len, int status)
 {
-    char *recvBuf = NULL;
+    struct stream *out_s;
     int bytes;
     int cbRecvLength;
-    int rv = 1;
+    char *recvBuf;
     int uds_client_id;
     struct pcsc_uds_client *uds_client;
-    struct stream *out_s = NULL;
     struct trans *con;
 
-    LOG_DEVEL(LOG_LEVEL_DEBUG,
-              "scard_function_control_return: status 0x%8.8x", status);
-
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_function_control_return:");
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "  status 0x%8.8x", status);
     uds_client_id = (int) (tintptr) user_data;
-    uds_client = get_uds_client_by_id(uds_client_id);
-
+    uds_client = (struct pcsc_uds_client *)
+                 get_uds_client_by_id(uds_client_id);
     if (uds_client == 0)
     {
         LOG(LOG_LEVEL_ERROR, "scard_function_control_return: "
             "get_uds_client_by_id failed to find uds_client_id %d",
             uds_client_id);
-
-        g_free(recvBuf);
-
-        return rv;
+        return 1;
     }
-
     con = uds_client->con;
     cbRecvLength = 0;
-
+    recvBuf = 0;
     if (status == 0)
     {
         in_uint8s(in_s, 28);
         in_uint32_le(in_s, cbRecvLength);
-
-        if (cbRecvLength > 0)
-        {
-            recvBuf = (char *) malloc(cbRecvLength);
-
-            if (recvBuf == NULL)
-            {
-                LOG(LOG_LEVEL_ERROR, "scard_function_control_return: "
-                    "failed to allocate memory for recvBuf");
-
-                g_free(recvBuf);
-
-                return rv;
-            }
-
-            in_uint8p(in_s, recvBuf, cbRecvLength);
-        }
+        in_uint8p(in_s, recvBuf, cbRecvLength);
     }
-
-    LOG_DEVEL(LOG_LEVEL_DEBUG,
-              "scard_function_control_return: cbRecvLength %d",
-              cbRecvLength);
-
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "scard_function_control_return: cbRecvLength %d", cbRecvLength);
     out_s = trans_get_out_s(con, 8192);
-
     if (out_s == NULL)
     {
-        g_free(recvBuf);
-
-        return rv;
+        return 1;
     }
-
     s_push_layer(out_s, iso_hdr, 8);
-
-    if (recvBuf != NULL)
-    {
-        out_uint32_le(out_s, cbRecvLength);
-        out_uint8a(out_s, recvBuf, cbRecvLength);
-    }
-
+    out_uint32_le(out_s, cbRecvLength);
+    out_uint8a(out_s, recvBuf, cbRecvLength);
     out_uint32_le(out_s, status); /* SCARD_S_SUCCESS status */
     s_mark_end(out_s);
-
     bytes = (int) (out_s->end - out_s->data);
-
     s_pop_layer(out_s, iso_hdr);
     out_uint32_le(out_s, bytes - 8);
     out_uint32_le(out_s, 0x0A); /* SCARD_CONTROL 0x0A */
-    rv = trans_force_write(con);
-
-    return rv;
+    return trans_force_write(con);
 }
-
 
 /*****************************************************************************/
 struct pcsc_status
@@ -1444,7 +1400,7 @@ struct pcsc_status
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_status(struct trans *con, struct stream *in_s)
 {
     int hCard;
@@ -1632,7 +1588,7 @@ scard_function_status_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_get_status_change(struct trans *con, struct stream *in_s)
 {
     int index;
@@ -1769,7 +1725,7 @@ scard_function_get_status_change_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_cancel(struct trans *con, struct stream *in_s)
 {
     int hContext;
@@ -1855,7 +1811,7 @@ int scard_function_reconnect_return(void *user_data,
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 scard_process_msg(struct trans *con, struct stream *in_s, int command)
 {
     int rv;
@@ -1950,7 +1906,7 @@ scard_process_msg(struct trans *con, struct stream *in_s, int command)
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 my_pcsc_trans_data_in(struct trans *trans)
 {
     struct stream *s;
@@ -1977,7 +1933,7 @@ my_pcsc_trans_data_in(struct trans *trans)
 
 /*****************************************************************************/
 /* got a new connection from libpcsclite */
-static int
+int
 my_pcsc_trans_conn_in(struct trans *trans, struct trans *new_trans)
 {
     struct pcsc_uds_client *uds_client;

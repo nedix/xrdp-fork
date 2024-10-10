@@ -21,32 +21,26 @@
 #if defined(HAVE_CONFIG_H)
 #include <config_ac.h>
 #endif
-#include <ctype.h>
-#include <limits.h>
-
-#include "guid.h"
-#include "libxrdp.h"
-#include "log.h"
-#include "ms-rdpbcgr.h"
-#include "ms-rdpedisp.h"
-#include "scp.h"
-#include "string_calls.h"
 #include "xrdp.h"
-#include "xrdp_channel.h"
-#include "xrdp_egfx.h"
+#include "log.h"
+#include "string_calls.h"
+#include "guid.h"
+#include "ms-rdpedisp.h"
+#include "ms-rdpbcgr.h"
+#include "scp.h"
+#include <ctype.h>
 #include "xrdp_encoder.h"
-#include "xrdp_mm.h"
 #include "xrdp_sockets.h"
-#include "xrdp_tconfig.h"
+#include "xrdp_egfx.h"
+#include "libxrdp.h"
+#include "xrdp_channel.h"
+#include <limits.h>
 
 /* Forward declarations */
 static int
 xrdp_mm_chansrv_connect(struct xrdp_mm *self, const char *port);
 static void
 xrdp_mm_connect_sm(struct xrdp_mm *self);
-
-static int
-xrdp_mm_send_unicode_shutdown(struct xrdp_mm *self, struct trans *trans);
 
 /*****************************************************************************/
 struct xrdp_mm *
@@ -133,15 +127,10 @@ xrdp_mm_module_cleanup(struct xrdp_mm *self)
     self->mod = 0;
     self->mod_handle = 0;
 
-    if (self->wm && self->wm->hide_log_window)
+    if (self->wm->hide_log_window)
     {
-        /* make sure autologin is off.
-         * Check pointers are valid in case we're ending the process */
-        if (self->wm->session != NULL &&
-                self->wm->session->client_info != NULL)
-        {
-            self->wm->session->client_info->rdp_autologin = 0;
-        }
+        /* make sure autologin is off */
+        self->wm->session->client_info->rdp_autologin = 0;
         xrdp_wm_set_login_state(self->wm, WMLS_RESET); /* reset session */
     }
 
@@ -155,9 +144,6 @@ xrdp_mm_delete(struct xrdp_mm *self)
     {
         return;
     }
-
-    /* shutdown input method */
-    xrdp_mm_send_unicode_shutdown(self, self->chan_trans);
 
     /* free any module stuff */
     xrdp_mm_module_cleanup(self);
@@ -248,6 +234,7 @@ xrdp_mm_send_sys_login_request(struct xrdp_mm *self, const char *username,
 static int
 xrdp_mm_create_session(struct xrdp_mm *self)
 {
+    int rv = 0;
     int xserverbpp;
     enum scp_session_type type;
 
@@ -265,23 +252,28 @@ xrdp_mm_create_session(struct xrdp_mm *self)
         default:
             xrdp_wm_log_msg(self->wm, LOG_LEVEL_ERROR,
                             "Unrecognised session code %d", self->code);
-            return 1;
+            rv = 1;
     }
 
-    xserverbpp = xrdp_mm_get_value_int(self, "xserverbpp",
-                                       self->wm->screen->bpp);
+    if (rv == 0)
+    {
+        xserverbpp = xrdp_mm_get_value_int(self, "xserverbpp",
+                                           self->wm->screen->bpp);
 
-    xrdp_wm_log_msg(self->wm, LOG_LEVEL_DEBUG,
-                    "sending create session request to session"
-                    " manager. Please wait...");
-    return scp_send_create_session_request(
-             self->sesman_trans,
-             type,
-             self->wm->screen->width,
-             self->wm->screen->height,
-             xserverbpp,
-             self->wm->client_info->program,
-             self->wm->client_info->directory);
+        xrdp_wm_log_msg(self->wm, LOG_LEVEL_DEBUG,
+                        "sending create session request to session"
+                        " manager. Please wait...");
+        rv = scp_send_create_session_request(
+                 self->sesman_trans,
+                 type,
+                 self->wm->screen->width,
+                 self->wm->screen->height,
+                 xserverbpp,
+                 self->wm->client_info->program,
+                 self->wm->client_info->directory);
+    }
+
+    return rv;
 }
 
 /*****************************************************************************/
@@ -385,7 +377,6 @@ xrdp_mm_setup_mod1(struct xrdp_mm *self)
             self->mod->server_end_update = server_end_update;
             self->mod->server_bell_trigger = server_bell_trigger;
             self->mod->server_chansrv_in_use = server_chansrv_in_use;
-            self->mod->server_init_xkb_layout = server_init_xkb_layout;
             self->mod->server_fill_rect = server_fill_rect;
             self->mod->server_screen_blt = server_screen_blt;
             self->mod->server_paint_rect = server_paint_rect;
@@ -527,18 +518,6 @@ xrdp_mm_setup_mod2(struct xrdp_mm *self)
         if (self->mod->mod_connect(self->mod) == 0)
         {
             rv = 0; /* connect success */
-
-            // If we've received a recent TS_SYNC_EVENT, pass it on to
-            // the module so (e.g.) NumLock starts in the right state.
-            if (self->last_sync_saved)
-            {
-                int key_flags = self->last_sync_key_flags;
-                int device_flags = self->last_sync_device_flags;
-                self->last_sync_saved = 0;
-                self->mod->mod_event(self->mod, WM_KEYBRD_SYNC, key_flags,
-                                     device_flags, key_flags, device_flags);
-
-            }
         }
         else
         {
@@ -675,73 +654,6 @@ xrdp_mm_trans_process_channel_data(struct xrdp_mm *self, struct stream *s)
     }
 
     return rv;
-}
-
-/*****************************************************************************/
-static int
-xrdp_mm_send_unicode_shutdown(struct xrdp_mm *self, struct trans *trans)
-{
-    struct stream *s = trans_get_out_s(self->chan_trans, 8192);
-    if (s == NULL)
-    {
-        return 1;
-    }
-
-    out_uint32_le(s, 0);     /* version */
-    out_uint32_le(s, 8 + 8); /* size */
-    out_uint32_le(s, 25);    /* msg id */
-    out_uint32_le(s, 8);     /* size */
-    s_mark_end(s);
-
-    return trans_write_copy(self->chan_trans);
-}
-
-/*****************************************************************************/
-static int
-xrdp_mm_send_unicode_setup(struct xrdp_mm *self, struct trans *trans)
-{
-    int rv = 0;
-
-    if (self->wm->client_info->unicode_input_support == UIS_SUPPORTED)
-    {
-        struct stream *s = trans_get_out_s(self->chan_trans, 8192);
-        if (s == NULL)
-        {
-            rv = 1;
-        }
-        else
-        {
-            out_uint32_le(s, 0); /* version */
-            out_uint32_le(s, 8 + 8); /* size */
-            out_uint32_le(s, 21); /* msg id */
-            out_uint32_le(s, 8); /* size */
-            s_mark_end(s);
-
-            rv = trans_write_copy(self->chan_trans);
-        }
-    }
-
-    return rv;
-}
-
-/******************************************************************************/
-int xrdp_mm_send_unicode_to_chansrv(struct xrdp_mm *self,
-                                    int key_down,
-                                    char32_t unicode)
-{
-    struct stream *s = trans_get_out_s(self->chan_trans, 8192);
-    if (s == NULL)
-    {
-        return 1;
-    }
-    out_uint32_le(s, 0);  /* version */
-    out_uint32_le(s, 24); /* size */
-    out_uint32_le(s, 23); /* msg id */
-    out_uint32_le(s, 16); /* size */
-    out_uint32_le(s, key_down);
-    out_uint32_le(s, unicode);
-    s_mark_end(s);
-    return trans_write_copy(self->chan_trans);
 }
 
 /*****************************************************************************/
@@ -1216,12 +1128,6 @@ xrdp_mm_egfx_invalidate_wm_screen(struct xrdp_mm *self)
 static int
 dynamic_monitor_open_response(intptr_t id, int chan_id, int creation_status)
 {
-    if (id == 0 || chan_id == 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "dynamic_monitor_open_response: bad input");
-        return 1;
-    }
-
     struct xrdp_process *pro;
     struct xrdp_wm *wm;
     struct stream *s;
@@ -1297,6 +1203,67 @@ struct ver_flags_t
 
 /******************************************************************************/
 static int
+cmpverfunc (const void *a, const void *b)
+{
+    return ((struct ver_flags_t *)a)->version -
+           ((struct ver_flags_t *)b)->version;
+}
+
+/******************************************************************************/
+static int
+xrdp_mm_egfx_create_surfaces(struct xrdp_mm *self)
+{
+    int surface_id;
+    int index;
+    int count;
+    int left;
+    int top;
+    int width;
+    int height;
+    struct monitor_info *mi;
+    struct xrdp_bitmap *screen;
+
+    screen = self->wm->screen;
+    count = self->wm->client_info->display_sizes.monitorCount;
+    LOG_DEVEL(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: "
+              "monitor count %d", count);
+    if (count < 1)
+    {
+        left = 0;
+        top = 0;
+        width = screen->width;
+        height = screen->height;
+        xrdp_egfx_send_create_surface(self->egfx, self->egfx->surface_id,
+                                      width, height,
+                                      XR_PIXEL_FORMAT_XRGB_8888);
+        xrdp_egfx_send_map_surface(self->egfx, self->egfx->surface_id,
+                                   left, top);
+        LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: map "
+            "surface_id %d left %d top %d width %d height %d",
+            self->egfx->surface_id, left, top, width, height);
+        return 0;
+    }
+    for (index = 0; index < count; index++)
+    {
+        surface_id = index;
+        mi = self->wm->client_info->display_sizes.minfo_wm + index;
+        left = mi->left;
+        top = mi->top;
+        width = mi->right - mi->left + 1;
+        height = mi->bottom - mi->top + 1;
+        xrdp_egfx_send_create_surface(self->egfx, surface_id,
+                                      width, height,
+                                      XR_PIXEL_FORMAT_XRGB_8888);
+        xrdp_egfx_send_map_surface(self->egfx, surface_id, left, top);
+        LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_create_surfaces: map "
+            "surface_id %d left %d top %d width %d height %d",
+            surface_id, left, top, width, height);
+    }
+    return 0;
+}
+
+/******************************************************************************/
+static int
 xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
                             int *versions, int *flagss)
 {
@@ -1309,28 +1276,41 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
     int error;
     int version;
     int flags;
+    struct ver_flags_t *ver_flags;
 
-    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: Starting");
-
+    LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise:");
     self = (struct xrdp_mm *) user;
     screen = self->wm->screen;
     if (screen->data == NULL)
     {
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: can not do gfx");
     }
-
+    /* create copy for sorting */
+    ver_flags = g_new(struct ver_flags_t, caps_count);
+    if (ver_flags == NULL)
+    {
+        return 1;
+    }
+    for (index = 0; index < caps_count; index++)
+    {
+        ver_flags[index].version = versions[index];
+        ver_flags[index].flags = flagss[index];
+    }
+    /* sort by version */
+    g_qsort(ver_flags, caps_count, sizeof(struct ver_flags_t), cmpverfunc);
     best_index = -1;
     best_h264_index = -1;
     best_pro_index = -1;
-
     for (index = 0; index < caps_count; index++)
     {
-        version = versions[index];
-        flags = flagss[index];
-        LOG(LOG_LEVEL_INFO, "  version 0x%8.8x flags 0x%8.8x (index: %d)", version, flags, index);
+        version = ver_flags[index].version;
+        flags = ver_flags[index].flags;
+        LOG(LOG_LEVEL_INFO, "  version 0x%8.8x flags 0x%8.8x (index: %d)",
+            version, flags, index);
         switch (version)
         {
-            case XR_RDPGFX_CAPVERSION_8:
+            case XR_RDPGFX_CAPVERSION_8: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_101:
                 best_pro_index = index;
                 break;
             case XR_RDPGFX_CAPVERSION_81:
@@ -1341,20 +1321,27 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
                 best_pro_index = index;
                 break;
             case XR_RDPGFX_CAPVERSION_10:
-            case XR_RDPGFX_CAPVERSION_101:
-            case XR_RDPGFX_CAPVERSION_102:
-            case XR_RDPGFX_CAPVERSION_103:
+                if (!(flags & XR_RDPGFX_CAPS_FLAG_AVC_DISABLED))
+                {
+                    best_h264_index = index;
+                }
                 best_pro_index = index;
                 break;
-            case XR_RDPGFX_CAPVERSION_104:
-            case XR_RDPGFX_CAPVERSION_105:
-            case XR_RDPGFX_CAPVERSION_106:
+            case XR_RDPGFX_CAPVERSION_102: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_103: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_104: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_105: /* FALLTHROUGH */
+            case XR_RDPGFX_CAPVERSION_106: /* FALLTHROUGH */
             case XR_RDPGFX_CAPVERSION_107:
                 if (!(flags & XR_RDPGFX_CAPS_FLAG_AVC_DISABLED))
                 {
                     best_h264_index = index;
                 }
                 best_pro_index = index;
+                break;
+            default:
+                /* just skip unknwown */
+                LOG(LOG_LEVEL_INFO, "unknown version 0x%8.8x", version);
                 break;
         }
     }
@@ -1363,40 +1350,32 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
         best_index = best_pro_index;
         self->egfx_flags = XRDP_EGFX_RFX_PRO;
     }
-    if (best_h264_index >= 0) /* prefer h264, todo use setting in xrdp.ini for this */
+    /* prefer h264, todo use setting in xrdp.ini for this */
+    if (best_h264_index >= 0)
     {
-
-#if defined(XRDP_X264) \
-    || defined(XRDP_OPENH264) \
-    || defined(XRDP_NVENC) \
-    || defined(XRDP_NVENC_NO_OPENGL) \
-    || defined(XRDP_VANILLA_NVIDIA_CODEC)
+#if defined(XRDP_X264) || defined(XRDP_NVENC)
         best_index = best_h264_index;
         self->egfx_flags = XRDP_EGFX_H264;
 #endif
-
     }
     if (best_index >= 0)
     {
         LOG(LOG_LEVEL_INFO, "  replying version 0x%8.8x flags 0x%8.8x",
-            versions[best_index], flagss[best_index]);
+            ver_flags[best_index].version, ver_flags[best_index].flags);
         error = xrdp_egfx_send_capsconfirm(self->egfx,
-                                           versions[best_index],
-                                           flagss[best_index]);
+                                           ver_flags[best_index].version,
+                                           ver_flags[best_index].flags);
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: xrdp_egfx_send_capsconfirm "
             "error %d best_index %d", error, best_index);
         error = xrdp_egfx_send_reset_graphics(self->egfx,
                                               screen->width, screen->height,
                                               self->wm->client_info->display_sizes.monitorCount,
-                                              self->wm->client_info->display_sizes.minfo_wm);
+                                              self->wm->client_info->display_sizes.minfo);
         LOG(LOG_LEVEL_INFO, "xrdp_mm_egfx_caps_advertise: xrdp_egfx_send_reset_graphics "
             "error %d monitorCount %d",
             error, self->wm->client_info->display_sizes.monitorCount);
         self->egfx_up = 1;
-        xrdp_egfx_send_create_surface(self->egfx, self->egfx->surface_id,
-                                      screen->width, screen->height,
-                                      XR_PIXEL_FORMAT_XRGB_8888);
-        xrdp_egfx_send_map_surface(self->egfx, self->egfx->surface_id, 0, 0);
+        xrdp_mm_egfx_create_surfaces(self);
         self->encoder = xrdp_encoder_create(self);
         xrdp_mm_egfx_invalidate_wm_screen(self);
 
@@ -1426,7 +1405,7 @@ xrdp_mm_egfx_caps_advertise(void *user, int caps_count,
         self->encoder = xrdp_encoder_create(self);
         xrdp_bitmap_invalidate(screen, &lrect);
     }
-
+    g_free(ver_flags);
     return 0;
 }
 
@@ -1437,13 +1416,8 @@ xrdp_mm_update_module_frame_ack(struct xrdp_mm *self)
     int fif;
     struct xrdp_encoder *encoder;
 
-    if (self == NULL || self->mod == NULL) {
-        return 0;
-    }
-
     encoder = self->encoder;
     fif = encoder->frames_in_flight;
-
     if (encoder->frame_id_client + fif > encoder->frame_id_server)
     {
         if (encoder->frame_id_server > encoder->frame_id_server_sent)
@@ -1454,7 +1428,6 @@ xrdp_mm_update_module_frame_ack(struct xrdp_mm *self)
             self->mod->mod_frame_ack(self->mod, 0, encoder->frame_id_server);
         }
     }
-
     return 0;
 }
 
@@ -1516,7 +1489,7 @@ xrdp_mm_egfx_frame_ack(void *user, uint32_t queue_depth, int frame_id,
 }
 
 /******************************************************************************/
-static int
+int
 egfx_initialize(struct xrdp_mm *self)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE, "egfx_initialize");
@@ -1547,12 +1520,6 @@ sync_dynamic_monitor_data(struct xrdp_wm *wm,
 {
     struct display_size_description *display_sizes
         = &(wm->client_info->display_sizes);
-
-    if (wm == NULL || description == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR, "%s: invalid input", __func__);
-        return;
-    }
 
     display_sizes->monitorCount = description->monitorCount;
     display_sizes->session_width = description->session_width;
@@ -1676,6 +1643,7 @@ process_display_control_monitor_layout_data(struct xrdp_wm *wm)
     struct xrdp_rdp *rdp;
     struct xrdp_sec *sec;
     struct xrdp_channel *chan;
+    int in_progress;
 
     LOG_DEVEL(LOG_LEVEL_TRACE, "process_display_control_monitor_layout_data:");
 
@@ -1774,13 +1742,20 @@ process_display_control_monitor_layout_data(struct xrdp_wm *wm)
             error = module->mod_server_monitor_resize(
                         module, desc_width, desc_height,
                         description->description.monitorCount,
-                        description->description.minfo);
+                        description->description.minfo,
+                        &in_progress);
             if (error != 0)
             {
                 LOG_DEVEL(LOG_LEVEL_INFO,
                           "process_display_control_monitor_layout_data:"
                           " mod_server_monitor_resize failed %d", error);
                 return advance_error(error, mm);
+            }
+            else if (in_progress)
+            {
+                // Call is proceeding asynchronously
+                advance_resize_state_machine(
+                    mm, WMRZ_SERVER_MONITOR_MESSAGE_PROCESSING);
             }
             else
             {
@@ -1796,10 +1771,7 @@ process_display_control_monitor_layout_data(struct xrdp_wm *wm)
             break;
         case WMRZ_XRDP_CORE_RESET:
             sync_dynamic_monitor_data(wm, &(description->description));
-            error = libxrdp_reset(wm->session,
-                                  desc_width,
-                                  desc_height,
-                                  wm->screen->bpp);
+            error = libxrdp_reset(wm->session);
             if (error != 0)
             {
                 LOG_DEVEL(LOG_LEVEL_INFO,
@@ -2016,7 +1988,7 @@ dynamic_monitor_process_queue(struct xrdp_mm *self)
 }
 
 /******************************************************************************/
-static int
+int
 dynamic_monitor_initialize(struct xrdp_mm *self)
 {
     struct xrdp_drdynvc_procs d_procs;
@@ -2423,45 +2395,6 @@ xrdp_mm_trans_process_drdynvc_data(struct xrdp_mm *self,
 }
 
 /*****************************************************************************/
-/* Acknowledgement from chansrv that Unicode input is supported
- */
-static int
-xrdp_mm_trans_process_unicode_ack(struct xrdp_mm *self,
-                                  struct stream *s)
-{
-    int status;
-    if (!s_check_rem(s, 4))
-    {
-        return 1;
-    }
-    in_uint32_le(s, status);
-    switch (status)
-    {
-        case 0:
-            LOG(LOG_LEVEL_INFO, "Chansrv is handling Unicode input");
-            self->wm->client_info->unicode_input_support = UIS_ACTIVE;
-            break;
-
-        case 1:
-            LOG(LOG_LEVEL_INFO, "Chansrv does not support Unicode input");
-            break;
-
-        case 2:
-            LOG(LOG_LEVEL_INFO,
-                "Chansrv reported an error starting the Unicode input method");
-            break;
-
-        default:
-            LOG(LOG_LEVEL_INFO,
-                "Chansrv reported an unknown status %d"
-                " starting the Unicode input method", status);
-            break;
-    }
-
-    return 0;
-}
-
-/*****************************************************************************/
 /* returns error
    process a message for the channel handler */
 static int
@@ -2512,9 +2445,6 @@ xrdp_mm_chan_process_msg(struct xrdp_mm *self, struct trans *trans,
                 break;
             case 18:
                 rv = xrdp_mm_trans_process_drdynvc_data(self, s);
-                break;
-            case 20:
-                rv = xrdp_mm_trans_process_unicode_ack(self, s);
                 break;
             default:
                 LOG(LOG_LEVEL_ERROR, "xrdp_mm_chan_process_msg: unknown id %d", id);
@@ -3041,13 +2971,6 @@ xrdp_mm_chansrv_connect(struct xrdp_mm *self, const char *port)
         trans_delete(self->chan_trans);
         self->chan_trans = NULL;
     }
-    else if (xrdp_mm_send_unicode_setup(self, self->chan_trans) != 0)
-    {
-        LOG(LOG_LEVEL_ERROR, "xrdp_mm_chansrv_connect: error in "
-            "xrdp_mm_send_unicode_setup");
-        trans_delete(self->chan_trans);
-        self->chan_trans = NULL;
-    }
     else
     {
         LOG(LOG_LEVEL_DEBUG, "xrdp_mm_chansrv_connect: chansrv "
@@ -3558,10 +3481,10 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
             }
             else
             {
-                x = enc_done->rect.x;
-                y = enc_done->rect.y;
-                cx = enc_done->rect.cx;
-                cy = enc_done->rect.cy;
+                x = enc_done->x;
+                y = enc_done->y;
+                cx = enc_done->cx;
+                cy = enc_done->cy;
                 if (client_ack && !enc_done->continuation)
                 {
                     libxrdp_fastpath_send_frame_marker(self->wm->session, 0,
@@ -3593,7 +3516,8 @@ xrdp_mm_process_enc_done(struct xrdp_mm *self)
                     self->encoder->frame_id_server = enc_done->frame_id;
                     xrdp_mm_update_module_frame_ack(self);
                 }
-                else if (self->mod != NULL) {
+                else
+                {
                     self->mod->mod_frame_ack(self->mod, 0,
                                              enc_done->frame_id);
                 }
@@ -3937,15 +3861,6 @@ server_chansrv_in_use(struct xrdp_mod *mod)
 
     wm = (struct xrdp_wm *)(mod->wm);
     return wm->mm->use_chansrv;
-}
-
-/*****************************************************************************/
-/* Init the XKB layout */
-void
-server_init_xkb_layout(struct xrdp_mod *mod,
-                       struct xrdp_client_info *client_info)
-{
-    xrdp_init_xkb_layout(client_info);
 }
 
 

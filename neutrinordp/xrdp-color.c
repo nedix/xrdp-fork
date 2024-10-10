@@ -27,8 +27,6 @@
 #include "os_calls.h"
 #include "string_calls.h"
 
-#include "xrdp-color.h"
-
 char *
 convert_bitmap(int in_bpp, int out_bpp, char *bmpdata,
                int width, int height, int *palette)

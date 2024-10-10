@@ -29,7 +29,6 @@
 #include "config_ac.h"
 #endif
 
-#include "tools_common.h"
 #include "trans.h"
 #include "os_calls.h"
 #include "scp.h"

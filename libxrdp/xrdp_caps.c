@@ -422,33 +422,12 @@ xrdp_caps_process_input(struct xrdp_rdp *self, struct stream *s,
     {
         self->client_info.use_fast_path &= ~2;
     }
-
-    // We always advertise Unicode support, so if the client supports it too,
-    // we can use it.
-    //
-    // If Unicode support is already active, the CAPSTYPE_INPUT
-    // PDU has been received as part of a Deactivation-Reactivation sequence.
-    // In this case, ignore the flag.
-    if (self->client_info.unicode_input_support != UIS_ACTIVE)
-    {
-        if ((inputFlags & INPUT_FLAG_UNICODE) != 0)
-        {
-            self->client_info.unicode_input_support = UIS_SUPPORTED;
-            LOG(LOG_LEVEL_INFO, "Client supports Unicode input");
-        }
-        else
-        {
-            self->client_info.unicode_input_support = UIS_UNSUPPORTED;
-            LOG(LOG_LEVEL_INFO, "Client does not support Unicode input");
-        }
-    }
-
     return 0;
 }
 
 /*****************************************************************************/
 /* get the type of client brush cache */
-static int
+int
 xrdp_caps_process_brushcache(struct xrdp_rdp *self, struct stream *s,
                              int len)
 {
@@ -492,7 +471,7 @@ xrdp_caps_process_glyphcache(struct xrdp_rdp *self, struct stream *s,
 }
 
 /*****************************************************************************/
-static int
+int
 xrdp_caps_process_offscreen_bmpcache(struct xrdp_rdp *self, struct stream *s,
                                      int len)
 {
@@ -510,7 +489,7 @@ xrdp_caps_process_offscreen_bmpcache(struct xrdp_rdp *self, struct stream *s,
     in_uint16_le(s, i32);
     self->client_info.offscreen_cache_entries = i32;
     LOG(LOG_LEVEL_INFO, "xrdp_process_offscreen_bmpcache: support level %d "
-        "cache size %d bytes cache entries %d",
+        "cache size %d MB cache entries %d",
         self->client_info.offscreen_support_level,
         self->client_info.offscreen_cache_size,
         self->client_info.offscreen_cache_entries);
@@ -518,7 +497,7 @@ xrdp_caps_process_offscreen_bmpcache(struct xrdp_rdp *self, struct stream *s,
 }
 
 /*****************************************************************************/
-static int
+int
 xrdp_caps_process_rail(struct xrdp_rdp *self, struct stream *s, int len)
 {
     int i32;

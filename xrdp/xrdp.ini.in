@@ -27,12 +27,6 @@ port=3389
 ; prefer use vsock://<cid>:<port> above
 use_vsock=false
 
-; Unprivileged User name and group to run the xrdp daemon.
-; It is HIGHLY RECOMMENDED you set these values. See the xrdp.ini(5)
-; manpage for more information on setting and checking these.
-#runtime_user=xrdp
-#runtime_group=xrdp
-
 ; regulate if the listening socket use socket option tcp_nodelay
 ; no buffering will be performed in the TCP stack
 tcp_nodelay=true
@@ -248,7 +242,6 @@ username=ask
 password=ask
 port=-1
 code=20
-#keycode_set=evdev
 
 [Xvnc]
 name=Xvnc

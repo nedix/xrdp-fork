@@ -196,8 +196,7 @@ libxrdp_orders_send_font(struct xrdp_session *session,
                          struct xrdp_font_char *font_char,
                          int font_index, int char_index);
 int
-libxrdp_reset(struct xrdp_session *session, unsigned int width,
-              unsigned int height, int bpp);
+libxrdp_reset(struct xrdp_session *session);
 int
 libxrdp_orders_send_raw_bitmap2(struct xrdp_session *session,
                                 int width, int height, int bpp, char *data,
@@ -317,7 +316,6 @@ libxrdp_planar_compress(char *in_data, int width, int height,
                         struct stream *s, int bpp, int byte_limit,
                         int start_line, struct stream *temp_s,
                         int e, int flags);
-
 /**
  * Processes a stream that is based on either
  *  2.2.1.3.6 Client Monitor Data (TS_UD_CS_MONITOR) or 2.2.2.2 DISPLAYCONTROL_MONITOR_LAYOUT_PDU

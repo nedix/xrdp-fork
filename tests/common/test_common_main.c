@@ -55,7 +55,6 @@ int main (void)
     srunner_add_suite(sr, make_suite_test_ssl_calls());
     srunner_add_suite(sr, make_suite_test_base64());
     srunner_add_suite(sr, make_suite_test_guid());
-    srunner_add_suite(sr, make_suite_test_scancode());
 
     srunner_set_tap(sr, "-");
     /*

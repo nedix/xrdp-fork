@@ -34,7 +34,6 @@
 #define CURRENT_MOD_VER 4
 
 struct source_info;
-struct xrdp_client_info;
 
 struct mod
 {
@@ -58,7 +57,8 @@ struct mod
     int (*mod_server_monitor_resize)(struct mod *v,
                                      int width, int height,
                                      int num_monitors,
-                                     const struct monitor_info *monitors);
+                                     const struct monitor_info *monitors,
+                                     int *in_progress);
     int (*mod_server_monitor_full_invalidate)(struct mod *v,
             int width, int height);
     int (*mod_server_version_message)(struct mod *v);
@@ -97,10 +97,9 @@ struct mod
                             int box_left, int box_top,
                             int box_right, int box_bottom,
                             int x, int y, char *data, int data_len);
-    int (*server_reset)(struct mod *v, int width, int height, int bpp);
     int (*client_monitor_resize)(struct mod *v, int width, int height,
-                             int num_monitors,
-                             const struct monitor_info *monitors);
+                                 int num_monitors,
+                                 const struct monitor_info *monitors);
     int (*server_monitor_resize_done)(struct mod *v);
     int (*server_get_channel_count)(struct mod *v);
     int (*server_query_channel)(struct mod *v, int index,
@@ -112,8 +111,6 @@ struct mod
                                   int total_data_len, int flags);
     int (*server_bell_trigger)(struct mod *v);
     int (*server_chansrv_in_use)(struct mod *v);
-    void (*server_init_xkb_layout)(struct mod *v,
-                                   struct xrdp_client_info *client_info);
     /* off screen bitmaps */
     int (*server_create_os_surface)(struct mod *v, int rdpindex,
                                     int width, int height);
@@ -179,7 +176,7 @@ struct mod
     int (*server_egfx_cmd)(struct mod *v,
                            char *cmd, int cmd_bytes,
                            char *data, int data_bytes);
-    tintptr server_dumby[100 - 51]; /* align, 100 minus the number of server
+    tintptr server_dumby[100 - 50]; /* align, 100 minus the number of server
                                      functions above */
     /* common */
     tintptr handle; /* pointer to self as long */
@@ -201,7 +198,6 @@ struct mod
     int screen_shmem_id_mapped; /* boolean */
     char *screen_shmem_pixels;
     struct trans *trans;
-    char keycode_set[32];
 };
 
 #endif // XUP_H

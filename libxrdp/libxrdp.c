@@ -92,15 +92,11 @@ libxrdp_process_incoming(struct xrdp_session *session)
 int EXPORT_CC
 libxrdp_get_pdu_bytes(const char *aheader)
 {
-    int rv = -1;
+    int rv;
+    const tui8 *header;
 
-    if (aheader == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR, "libxrdp_get_pdu_bytes: aheader == NULL");
-        return rv;
-    }
-
-    const tui8 *header = (const tui8 *) aheader;
+    rv = -1;
+    header = (const tui8 *) aheader;
 
     if (header[0] == 0x03)
     {
@@ -766,13 +762,8 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
             return 1;
         }
 
-        if ((session->client_info->pointer_flags & 1) == 0)
+        if ((session->client_info->pointer_flags & 1) != 0)
         {
-            data_bytes = 3072;
-        }
-        else
-        {
-            data_bytes = ((bpp + 7) / 8) * 32 * 32;
             out_uint16_le(s, bpp); /* TS_FP_POINTERATTRIBUTE -> newPointerUpdateData.xorBpp */
         }
     }
@@ -784,7 +775,6 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
         {
             out_uint16_le(s, RDP_POINTER_COLOR);
             out_uint16_le(s, 0); /* pad */
-            data_bytes = 3072;
             LOG_DEVEL(LOG_LEVEL_TRACE, "Adding header [MS-RDPBCGR] TS_POINTER_PDU "
                       "messageType %d (TS_PTRMSGTYPE_COLOR), pad2Octets <ignored>",
                       RDP_POINTER_COLOR);
@@ -798,7 +788,6 @@ libxrdp_send_pointer(struct xrdp_session *session, int cache_idx,
                       RDP_POINTER_POINTER);
 
             out_uint16_le(s, bpp); /* TS_POINTERATTRIBUTE -> xorBpp */
-            data_bytes = ((bpp + 7) / 8) * 32 * 32;
         }
     }
 
@@ -1147,43 +1136,10 @@ libxrdp_orders_send_font(struct xrdp_session *session,
 }
 
 /*****************************************************************************/
-/* Note : if this is called on a multimon setup, the client is resized
- * to a single monitor */
 int EXPORT_CC
-libxrdp_reset(struct xrdp_session *session,
-              unsigned int width, unsigned int height, int bpp)
+libxrdp_reset(struct xrdp_session *session)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE, "libxrdp_reset:");
-    if (session->client_info != 0)
-    {
-        struct xrdp_client_info *client_info = session->client_info;
-
-        /* older client can't resize */
-        if (client_info->build <= 419)
-        {
-            return 0;
-        }
-
-        /* if same (and only one monitor on client) don't need to do anything */
-        if (client_info->display_sizes.session_width == width &&
-                client_info->display_sizes.session_height == height &&
-                client_info->bpp == bpp &&
-                (client_info->display_sizes.monitorCount == 0 || client_info->multimon == 0))
-        {
-            return 0;
-        }
-
-        client_info->display_sizes.session_width = width;
-        client_info->display_sizes.session_height = height;
-        client_info->display_sizes.monitorCount = 0;
-        client_info->bpp = bpp;
-        client_info->multimon = 0;
-    }
-    else
-    {
-        LOG(LOG_LEVEL_ERROR, "libxrdp_reset: session->client_info is NULL");
-        return 1;
-    }
 
     /* this will send any lingering orders */
     if (xrdp_orders_reset((struct xrdp_orders *)session->orders) != 0)
@@ -2068,8 +2024,6 @@ libxrdp_process_monitor_stream(struct stream *s,
             in_uint32_le(s, monitor_layout->desktop_scale_factor);
             in_uint32_le(s, monitor_layout->device_scale_factor);
 
-            sanitise_extended_monitor_attributes(monitor_layout);
-
             /*
              * 2.2.2.2.1 DISPLAYCONTROL_MONITOR_LAYOUT
              */
@@ -2214,19 +2168,6 @@ libxrdp_init_display_size_description(
     struct display_size_description *description)
 {
     unsigned int monitor_index;
-
-    if (monitors == NULL || description == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR,
-            "libxrdp_init_display_size_description: invalid input");
-
-        return SEC_PROCESS_MONITORS_ERR;
-    }
-
-    if (num_monitor == 0 || num_monitor > CLIENT_MONITOR_DATA_MAXIMUM_MONITORS)
-    {
-        return SEC_PROCESS_MONITORS_ERR;
-    }
     struct monitor_info *monitor_layout;
     struct xrdp_rect all_monitors_encompassing_bounds = {0};
     int got_primary = 0;
@@ -2358,14 +2299,6 @@ libxrdp_init_display_size_description(
     /* keep a copy of non negative monitor info values for xrdp_wm usage */
     for (monitor_index = 0; monitor_index < num_monitor; ++monitor_index)
     {
-        LOG(LOG_LEVEL_DEBUG, "libxrdp_init_display_size_description "
-            "monitor: %d. coordinates: %d %d %d %d",
-            monitor_index,
-            monitors[monitor_index].top,
-            monitors[monitor_index].right,
-            monitors[monitor_index].bottom,
-            monitors[monitor_index].left);
-
         monitor_layout = description->minfo_wm + monitor_index;
 
         *monitor_layout = description->minfo[monitor_index];
@@ -2383,6 +2316,7 @@ libxrdp_init_display_size_description(
     return 0;
 }
 
+/*****************************************************************************/
 int EXPORT_CC
 libxrdp_planar_compress(char *in_data, int width, int height,
                         struct stream *s, int bpp, int byte_limit,

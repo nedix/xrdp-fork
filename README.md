@@ -65,19 +65,22 @@ xrdp listens on 3389/tcp. Make sure your firewall accepts connection to
 apt install xrdp
 ```
 
-### Fedora, RHEL and derivatives
+### RedHat / CentOS / Fedora
 
-If you're not running Fedora, make sure to enable EPEL packages first.
-
-```bash
-dnf install epel-release
-```
-
-(All systems) Install xrdp with:-
+On RedHat and CentOS, make sure to enable EPEL packages first.
 
 ```bash
-dnf install xrdp
+yum install epel-release
 ```
+
+Install xrdp package.
+
+```bash
+yum install xrdp
+```
+
+`yum` is being replaced with `dnf`, so you may need to use `dnf` instead
+of `yum` in the above commands.
 
 ## Compiling
 

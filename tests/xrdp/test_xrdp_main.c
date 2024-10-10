@@ -55,10 +55,8 @@ int main (void)
     setvbuf(stdout, NULL, _IONBF, 0);
 
     sr = srunner_create (make_suite_test_bitmap_load());
-    srunner_add_suite(sr, make_suite_test_keymap_load());
     srunner_add_suite(sr, make_suite_egfx_base_functions());
     srunner_add_suite(sr, make_suite_region());
-    srunner_add_suite(sr, make_suite_tconfig_load_gfx());
 
     srunner_set_tap(sr, "-");
     srunner_run_all (sr, CK_ENV);

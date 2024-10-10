@@ -38,7 +38,7 @@
 #define CONNECT_DELAY_ON_FAIL_MS 2000
 
 /*****************************************************************************/
-static int
+int
 trans_tls_recv(struct trans *self, char *ptr, int len)
 {
     if (self->tls == NULL)
@@ -49,7 +49,7 @@ trans_tls_recv(struct trans *self, char *ptr, int len)
 }
 
 /*****************************************************************************/
-static int
+int
 trans_tls_send(struct trans *self, const char *data, int len)
 {
     if (self->tls == NULL)
@@ -60,7 +60,7 @@ trans_tls_send(struct trans *self, const char *data, int len)
 }
 
 /*****************************************************************************/
-static int
+int
 trans_tls_can_recv(struct trans *self, int sck, int millis)
 {
     if (self->tls == NULL)
@@ -71,21 +71,21 @@ trans_tls_can_recv(struct trans *self, int sck, int millis)
 }
 
 /*****************************************************************************/
-static int
+int
 trans_tcp_recv(struct trans *self, char *ptr, int len)
 {
     return g_tcp_recv(self->sck, ptr, len, 0);
 }
 
 /*****************************************************************************/
-static int
+int
 trans_tcp_send(struct trans *self, const char *data, int len)
 {
     return g_tcp_send(self->sck, data, len, 0);
 }
 
 /*****************************************************************************/
-static int
+int
 trans_tcp_can_recv(struct trans *self, int sck, int millis)
 {
     return g_sck_can_recv(sck, millis);
@@ -235,7 +235,7 @@ trans_get_wait_objs_rw(struct trans *self, tbus *robjs, int *rcount,
 }
 
 /*****************************************************************************/
-static int
+int
 trans_send_waiting(struct trans *self, int block)
 {
     struct stream *temp_s;
@@ -306,7 +306,7 @@ trans_send_waiting(struct trans *self, int block)
 int
 trans_check_wait_objs(struct trans *self)
 {
-    int in_sck = 0;
+    tbus in_sck = (tbus) 0;
     struct trans *in_trans = (struct trans *) NULL;
     int read_bytes = 0;
     unsigned int to_read = 0;
@@ -351,22 +351,15 @@ trans_check_wait_objs(struct trans *self)
                 {
                     in_trans = trans_create(self->mode, self->in_s->size,
                                             self->out_s->size);
-                    if (in_trans != NULL)
+                    in_trans->sck = in_sck;
+                    in_trans->type1 = TRANS_TYPE_SERVER;
+                    in_trans->status = TRANS_STATUS_UP;
+                    in_trans->is_term = self->is_term;
+                    g_file_set_cloexec(in_sck, 1);
+                    g_sck_set_non_blocking(in_sck);
+                    if (self->trans_conn_in(self, in_trans) != 0)
                     {
-                        in_trans->sck = in_sck;
-                        in_trans->type1 = TRANS_TYPE_SERVER;
-                        in_trans->status = TRANS_STATUS_UP;
-                        in_trans->is_term = self->is_term;
-                        g_file_set_cloexec(in_sck, 1);
-                        g_sck_set_non_blocking(in_sck);
-                        if (self->trans_conn_in(self, in_trans) != 0)
-                        {
-                            trans_delete(in_trans);
-                        }
-                    }
-                    else
-                    {
-                        g_tcp_close(in_sck);
+                        trans_delete(in_trans);
                     }
                 }
                 else
@@ -449,11 +442,6 @@ trans_check_wait_objs(struct trans *self)
                     rv = self->trans_data_in(self);
                     if (self->no_stream_init_on_data_in == 0)
                     {
-                        if (self->in_s != NULL)
-                        {
-                            free_stream(self->in_s);
-                        }
-
                         init_stream(self->in_s, 0);
                     }
                 }

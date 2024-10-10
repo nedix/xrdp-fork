@@ -122,11 +122,8 @@ tc_mutex_delete(tbus mutex)
     pthread_mutex_t *lmutex;
 
     lmutex = (pthread_mutex_t *)mutex;
-    if (lmutex != NULL)
-    {
-        pthread_mutex_destroy(lmutex);
-        g_free(lmutex);
-    }
+    pthread_mutex_destroy(lmutex);
+    g_free(lmutex);
 #endif
 }
 

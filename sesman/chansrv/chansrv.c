@@ -21,10 +21,6 @@
 #include <config_ac.h>
 #endif
 
-#ifdef XRDP_IBUS
-#include "input.h"
-#endif
-
 #include "arch.h"
 #include "os_calls.h"
 #include "string_calls.h"
@@ -721,26 +717,6 @@ chansrv_drdynvc_open(const char *name, int flags,
     return error;
 }
 
-
-/*****************************************************************************/
-/* tell xrdp we can do Unicode input */
-static int
-chansrv_advertise_unicode_input(int status)
-{
-    struct stream *s = trans_get_out_s(g_con_trans, 8192);
-    if (s == NULL)
-    {
-        return 1;
-    }
-    out_uint32_le(s, 0); /* version */
-    out_uint32_le(s, 8 + 8 + 4);
-    out_uint32_le(s, 20); /* msg id */
-    out_uint32_le(s, 8 + 4);
-    out_uint32_le(s, status);
-    s_mark_end(s);
-    return trans_write_copy(g_con_trans);
-}
-
 /*****************************************************************************/
 /* close call from chansrv */
 int
@@ -847,62 +823,6 @@ chansrv_drdynvc_send_data(int chan_id, const char *data, int data_bytes)
     return 0;
 }
 
-#ifdef XRDP_IBUS
-/*****************************************************************************/
-static int
-process_message_unicode_data(struct stream *s)
-{
-    int rv = 0;
-    int key_down;
-    char32_t unicode;
-
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "process_message_unicode_keypress:");
-    if (!s_check_rem(s, 8))
-    {
-        rv = 1;
-    }
-    else
-    {
-        in_uint32_le(s, key_down);
-        in_uint32_le(s, unicode);
-
-        LOG_DEVEL(LOG_LEVEL_DEBUG, "process_message_unicode_keypress: received unicode %i", unicode);
-
-        if (key_down)
-        {
-            xrdp_input_send_unicode(unicode);
-        }
-    }
-
-    return rv;
-}
-
-/*****************************************************************************/
-static int
-process_message_unicode_setup(struct stream *s)
-{
-    int rv = xrdp_input_unicode_init();
-    if (rv == 0)
-    {
-        // Tell xrdp we can support Unicode input
-        rv = chansrv_advertise_unicode_input(0);
-    }
-    else
-    {
-        // Tell xrdp there's a problem starting the framework
-        chansrv_advertise_unicode_input(2);
-    }
-    return rv;
-}
-
-/*****************************************************************************/
-static int
-process_message_unicode_shutdown(struct stream *s)
-{
-    return xrdp_input_unicode_destroy();
-}
-#endif
-
 /*****************************************************************************/
 /* returns error */
 static int
@@ -955,25 +875,6 @@ process_message(void)
             case 19: /* drdynvc data */
                 rv = process_message_drdynvc_data(s);
                 break;
-            case 21: /* unicode setup */
-#ifdef XRDP_IBUS
-                rv = process_message_unicode_setup(s);
-#else
-                // We don't support this.
-                rv = chansrv_advertise_unicode_input(1);
-#endif
-                break;
-            case 23: /* unicode key event */
-#ifdef XRDP_IBUS
-                rv = process_message_unicode_data(s);
-#endif
-                break;
-            case 25: /* unicode shut down */
-#ifdef XRDP_IBUS
-                rv = process_message_unicode_shutdown(s);
-#endif
-                break;
-
             default:
                 LOG_DEVEL(LOG_LEVEL_ERROR, "process_message: unknown msg %d", id);
                 break;
@@ -993,7 +894,7 @@ process_message(void)
 
 /*****************************************************************************/
 /* returns error */
-static int
+int
 my_trans_data_in(struct trans *trans)
 {
     struct stream *s = (struct stream *)NULL;
@@ -1037,7 +938,7 @@ my_trans_data_in(struct trans *trans)
 }
 
 /*****************************************************************************/
-static struct trans *
+struct trans *
 get_api_trans_from_chan_id(int chan_id)
 {
     return g_drdynvcs[chan_id].xrdp_api_trans;
@@ -1137,7 +1038,7 @@ my_api_data(int chan_id, char *data, int bytes)
  * called when WTSVirtualChannelWrite() is invoked in xrdpapi.c
  *
  ******************************************************************************/
-static int
+int
 my_api_trans_data_in(struct trans *trans)
 {
     struct stream *s;
@@ -1271,7 +1172,7 @@ my_api_trans_data_in(struct trans *trans)
 }
 
 /*****************************************************************************/
-static int
+int
 my_trans_conn_in(struct trans *trans, struct trans *new_trans)
 {
     if (trans == 0)
@@ -1308,7 +1209,7 @@ my_trans_conn_in(struct trans *trans, struct trans *new_trans)
  * called when WTSVirtualChannelOpenEx is invoked in xrdpapi.c
  *
  ******************************************************************************/
-static int
+int
 my_api_trans_conn_in(struct trans *trans, struct trans *new_trans)
 {
     struct xrdp_api_data *ad;
@@ -1476,7 +1377,7 @@ api_con_trans_list_remove_all(void)
 }
 
 /*****************************************************************************/
-static THREAD_RV THREAD_CC
+THREAD_RV THREAD_CC
 channel_thread_loop(void *in_val)
 {
     tbus objs[32];
@@ -1637,7 +1538,7 @@ child_signal_handler(void)
 }
 
 /*****************************************************************************/
-static void
+void
 segfault_signal_handler(int sig)
 {
     LOG_DEVEL(LOG_LEVEL_ERROR, "segfault_signal_handler: entered.......");

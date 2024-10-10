@@ -30,8 +30,6 @@
 #include <config_ac.h>
 #endif
 
-#include <X11/keysym.h>
-
 #include "vnc.h"
 #include "vnc_clip.h"
 #include "rfb.h"
@@ -446,89 +444,12 @@ resize_server_to_client_layout(struct vnc *v)
 }
 
 /*****************************************************************************/
-/**
- * Process keysym messages
- * @param v Module
- * @param keysym Keysym of keypress
- * @param keydown boolean - is key down?
- * @return != 0 for error
- */
-static int
-process_keysym_msg(struct vnc *v, int keysym, int keydown)
-{
-    struct stream *s = NULL;
-    int error = 0;
-
-    if (keysym > 0)
-    {
-        make_stream(s);
-
-        /* Break key processing [MS-RDPBCGR] 2.2.8.1.1.3.1.1.1 */
-        if (v->ignore_next_numlock)
-        {
-            v->ignore_next_numlock = 0;
-            if (keysym == XK_Num_Lock)
-            {
-                goto end_keysym_msg;
-            }
-        }
-
-        if (keysym == XK_ISO_Level3_Shift)  /* altgr */
-        {
-            if (v->shift_state)
-            {
-                /* fix for mstsc sending left control down with altgr */
-                init_stream(s, 64);
-                out_uint8(s, RFB_C2S_KEY_EVENT);
-                out_uint8(s, 0); /* down flag */
-                out_uint8s(s, 2);
-                out_uint32_be(s, XK_Control_L); /* left control */
-                s_mark_end(s);
-                error = lib_send_copy(v, s);
-                if (error != 0)
-                {
-                    goto end_keysym_msg;
-                }
-            }
-        }
-
-        init_stream(s, 64);
-        out_uint8(s, RFB_C2S_KEY_EVENT);
-        out_uint8(s, keydown ? 1 : 0);
-        out_uint8s(s, 2);
-        out_uint32_be(s, keysym);
-        s_mark_end(s);
-        error = lib_send_copy(v, s);
-
-        switch (keysym)
-        {
-            case XK_Control_L: /* left control */
-                v->shift_state = keydown;
-                break;
-
-            case XK_Pause:
-                // [MS-RDPBCGR] 2.2.8.1.1.3.1.1.1 - A pause key scancode
-                // (up or down) is always immediately followed by a
-                // numlock key which we should ignore
-                v->ignore_next_numlock = 1;
-                break;
-
-            default:
-                break;
-        }
-    }
-
-end_keysym_msg:
-    free_stream(s);
-    return error;
-}
-
-/*****************************************************************************/
-static int
+int
 lib_mod_event(struct vnc *v, int msg, long param1, long param2,
               long param3, long param4)
 {
     struct stream *s;
+    int key;
     int error;
     int x;
     int y;
@@ -571,7 +492,38 @@ lib_mod_event(struct vnc *v, int msg, long param1, long param2,
     }
     else if ((msg >= 15) && (msg <= 16)) /* key events */
     {
-        error = process_keysym_msg(v, param2, (msg == 15));
+        key = param2;
+
+        if (key > 0)
+        {
+            if (key == 65027) /* altgr */
+            {
+                if (v->shift_state)
+                {
+                    /* fix for mstsc sending left control down with altgr */
+                    init_stream(s, 8192);
+                    out_uint8(s, RFB_C2S_KEY_EVENT);
+                    out_uint8(s, 0); /* down flag */
+                    out_uint8s(s, 2);
+                    out_uint32_be(s, 65507); /* left control */
+                    s_mark_end(s);
+                    lib_send_copy(v, s);
+                }
+            }
+
+            init_stream(s, 8192);
+            out_uint8(s, RFB_C2S_KEY_EVENT);
+            out_uint8(s, msg == 15); /* down flag */
+            out_uint8s(s, 2);
+            out_uint32_be(s, key);
+            s_mark_end(s);
+            error = lib_send_copy(v, s);
+
+            if (key == 65507) /* left control */
+            {
+                v->shift_state = msg == 15;
+            }
+        }
     }
     /* mouse events
      *
@@ -661,12 +613,13 @@ lib_mod_event(struct vnc *v, int msg, long param1, long param2,
             error = lib_send_copy(v, s);
         }
     }
+
     free_stream(s);
     return error;
 }
 
 //******************************************************************************
-static int
+int
 get_pixel_safe(char *data, int x, int y, int width, int height, int bpp)
 {
     int start = 0;
@@ -735,7 +688,7 @@ get_pixel_safe(char *data, int x, int y, int width, int height, int bpp)
 }
 
 /******************************************************************************/
-static void
+void
 set_pixel_safe(char *data, int x, int y, int width, int height, int bpp,
                int pixel)
 {
@@ -794,7 +747,7 @@ set_pixel_safe(char *data, int x, int y, int width, int height, int bpp,
 }
 
 /******************************************************************************/
-static int
+int
 split_color(int pixel, int *r, int *g, int *b, int bpp, int *palette)
 {
     if (bpp == 8)
@@ -833,7 +786,7 @@ split_color(int pixel, int *r, int *g, int *b, int bpp, int *palette)
 }
 
 /******************************************************************************/
-static int
+int
 make_color(int r, int g, int b, int bpp)
 {
     if (bpp == 24)
@@ -1248,6 +1201,10 @@ lib_framebuffer_waiting_for_resize_confirm(struct vnc *v)
                 LOG(LOG_LEVEL_DEBUG, "VNC server successfully resized");
                 log_screen_layout(LOG_LEVEL_INFO, "NewLayout", &layout);
                 v->server_layout = layout;
+                // If this resize was requested by the client mid-session
+                // (dynamic resize), we need to tell xrdp_mm that
+                // it's OK to continue with the resize state machine.
+                error = v->server_monitor_resize_done(v);
             }
             else
             {
@@ -1255,22 +1212,9 @@ lib_framebuffer_waiting_for_resize_confirm(struct vnc *v)
                     "VNC server resize failed - error code %d [%s]",
                     response_code,
                     rfb_get_eds_status_msg(response_code));
-                // This is awkward. The client has asked for a specific size
-                // which we can't support.
-                //
-                // Currently we handle this by queueing a resize to our
-                // supported size, and continuing with the resize state
-                // machine in xrdp_mm.c
+                /* Force client to same size as server */
                 LOG(LOG_LEVEL_WARNING, "Resizing client to server");
                 error = resize_client_to_server(v, 0);
-            }
-
-            if (error == 0)
-            {
-                // If this resize was requested by the client mid-session
-                // (dynamic resize), we need to tell xrdp_mm that
-                // it's OK to continue with the resize state machine.
-                error = v->server_monitor_resize_done(v);
             }
             v->resize_status = VRS_DONE;
         }
@@ -1285,7 +1229,7 @@ lib_framebuffer_waiting_for_resize_confirm(struct vnc *v)
 }
 
 /******************************************************************************/
-static int
+int
 lib_framebuffer_update(struct vnc *v)
 {
     char *d1;
@@ -1305,9 +1249,9 @@ lib_framebuffer_update(struct vnc *v)
     int srcy;
     unsigned int encoding;
     int pixel;
-    int r = 0;
-    int g = 0;
-    int b = 0;
+    int r;
+    int g;
+    int b;
     int error;
     int need_size;
     struct stream *s;
@@ -1474,7 +1418,7 @@ lib_framebuffer_update(struct vnc *v)
 }
 
 /******************************************************************************/
-static int
+int
 lib_palette_update(struct vnc *v)
 {
     struct stream *s;
@@ -1530,7 +1474,7 @@ lib_palette_update(struct vnc *v)
 }
 
 /******************************************************************************/
-static int
+int
 lib_bell_trigger(struct vnc *v)
 {
     int error;
@@ -1540,7 +1484,7 @@ lib_bell_trigger(struct vnc *v)
 }
 
 /******************************************************************************/
-static int
+int
 lib_mod_signal(struct vnc *v)
 {
     return 0;
@@ -1599,7 +1543,7 @@ lib_mod_process_message(struct vnc *v, struct stream *s)
 }
 
 /******************************************************************************/
-static int
+int
 lib_mod_start(struct vnc *v, int w, int h, int bpp)
 {
     v->server_begin_update(v);
@@ -1647,7 +1591,7 @@ lib_data_in(struct trans *trans)
 /*
   return error
 */
-static int
+int
 lib_mod_connect(struct vnc *v)
 {
     char cursor_data[32 * (32 * 3)];
@@ -2057,7 +2001,7 @@ lib_mod_connect(struct vnc *v)
 }
 
 /******************************************************************************/
-static int
+int
 lib_mod_end(struct vnc *v)
 {
     if (v->vnc_desktop != 0)
@@ -2108,7 +2052,7 @@ init_client_layout(struct vnc *v,
 }
 
 /******************************************************************************/
-static int
+int
 lib_mod_set_param(struct vnc *v, const char *name, const char *value)
 {
     if (g_strcasecmp(name, "username") == 0)
@@ -2167,7 +2111,7 @@ lib_mod_set_param(struct vnc *v, const char *name, const char *value)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_get_wait_objs(struct vnc *v, tbus *read_objs, int *rcount,
                       tbus *write_objs, int *wcount, int *timeout)
 {
@@ -2187,7 +2131,7 @@ lib_mod_get_wait_objs(struct vnc *v, tbus *read_objs, int *rcount,
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_check_wait_objs(struct vnc *v)
 {
     int rv;
@@ -2209,7 +2153,7 @@ lib_mod_check_wait_objs(struct vnc *v)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_frame_ack(struct vnc *v, int flags, int frame_id)
 {
     return 0;
@@ -2217,7 +2161,7 @@ lib_mod_frame_ack(struct vnc *v, int flags, int frame_id)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_suppress_output(struct vnc *v, int suppress,
                         int left, int top, int right, int bottom)
 {
@@ -2245,7 +2189,7 @@ lib_mod_suppress_output(struct vnc *v, int suppress,
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_server_version_message(struct vnc *v)
 {
     return 0;
@@ -2253,12 +2197,14 @@ lib_mod_server_version_message(struct vnc *v)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_server_monitor_resize(struct vnc *v, int width, int height,
                               int num_monitors,
-                              const struct monitor_info *monitors)
+                              const struct monitor_info *monitors,
+                              int *in_progress)
 {
     int error;
+    *in_progress = 0;
     init_client_layout(v, width, height, num_monitors, monitors);
 
     if ((error = resize_server_to_client_layout(v)) == 0)
@@ -2268,9 +2214,10 @@ lib_mod_server_monitor_resize(struct vnc *v, int width, int height,
         // it works around a buggy VNC server not sending an
         // ExtendedDesktopSize rectangle if the desktop change is
         // small (eg. same dimensions, but 2 monitors -> 1 monitor)
-        if (v->resize_status == VRS_WAITING_FOR_RESIZE_CONFIRM)
+        if (v->resize_status == VRS_WAITING_FOR_RESIZE_CONFIRM &&
+                (error = send_update_request_for_resize_status(v)) == 0)
         {
-            error = send_update_request_for_resize_status(v) != 0;
+            *in_progress = 1;
         }
     }
 
@@ -2279,7 +2226,7 @@ lib_mod_server_monitor_resize(struct vnc *v, int width, int height,
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_server_monitor_full_invalidate(struct vnc *v, int param1, int param2)
 {
     return 0;

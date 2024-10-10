@@ -147,6 +147,10 @@ START_TEST(test_list__simple_strdup_multi)
 }
 END_TEST
 
+int
+split_string_append_fragment(const char **start, const char *end,
+                             struct list *list);
+
 START_TEST(test_list__append_fragment)
 {
     struct list *l = list_create();

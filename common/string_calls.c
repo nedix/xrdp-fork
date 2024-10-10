@@ -102,7 +102,7 @@ g_format_info_string(char *dest, unsigned int len,
 
         /* Do we have room in the output buffer for any more data? We
          * must always write a terminator if possible */
-        if (len > 1 && copy_from != NULL)
+        if (len > 1)
         {
             if (copy_len > (len - 1))
             {
@@ -665,7 +665,6 @@ g_bytes_to_hexdump(const char *src, int len)
         }
 
     }
-
     if (dump_offset > dump_length)
     {
         LOG_DEVEL(LOG_LEVEL_WARNING,
@@ -677,15 +676,7 @@ g_bytes_to_hexdump(const char *src, int len)
 
     /* replace the last new line with the end of the string since log_message
        will add a new line */
-    if (dump_offset >= HEX_DUMP_NEWLINE_SIZE)
-    {
-        dump_buffer[dump_offset - HEX_DUMP_NEWLINE_SIZE] = '\0';
-    }
-    else
-    {
-        dump_buffer[0] = '\0';
-    }
-
+    dump_buffer[dump_offset - HEX_DUMP_NEWLINE_SIZE] = '\0';
     return dump_buffer;
 }
 

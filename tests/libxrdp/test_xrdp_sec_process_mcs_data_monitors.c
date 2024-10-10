@@ -11,7 +11,7 @@ struct xrdp_sec *sec_layer;
 struct xrdp_rdp *rdp_layer;
 struct xrdp_session *session;
 
-static void setup(void)
+void setup(void)
 {
     rdp_layer = (struct xrdp_rdp *)g_malloc(sizeof(struct xrdp_rdp), 1);
     session = (struct xrdp_session *)g_malloc(sizeof(struct xrdp_session), 1);
@@ -22,7 +22,7 @@ static void setup(void)
     sec_layer->rdp_layer = rdp_layer;
 }
 
-static void teardown(void)
+void teardown(void)
 {
     g_free(sec_layer);
     g_free(session);

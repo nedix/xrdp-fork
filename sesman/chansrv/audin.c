@@ -32,7 +32,6 @@
 #include "log.h"
 #include "xrdp_constants.h"
 #include "fifo.h"
-#include "audin.h"
 
 #define MSG_SNDIN_VERSION       1
 #define MSG_SNDIN_FORMATS       2
@@ -202,26 +201,13 @@ audin_send_open(int chan_id)
 {
     int error;
     int bytes;
-    struct stream *s = NULL;
+    struct stream *s;
     struct xr_wave_format_ex *wf = g_client_formats[g_current_format];
 
     LOG_DEVEL(LOG_LEVEL_INFO, "audin_send_open:");
     make_stream(s);
-    init_stream(s, 0); // Initialize with size 0 first
-
     /* wf->cbSize was checked when the format was received */
-    s->size = wf->cbSize + 64;
-    s->data = g_malloc(s->size, 0); // Allocate memory for the stream
-
-    if (s->data == NULL)
-    {
-        LOG(LOG_LEVEL_ERROR, "audin_send_open: failed to allocate memory for stream");
-        free_stream(s);
-        return 1;
-    }
-
-    s->p = s->data;
-    s->end = s->data + s->size;
+    init_stream(s, wf->cbSize + 64);
 
     out_uint8(s, MSG_SNDIN_OPEN);
     out_uint32_le(s, 2048); /* FramesPerPacket */
@@ -357,17 +343,11 @@ audin_process_data(int chan_id, struct stream *s)
     LOG_DEVEL(LOG_LEVEL_DEBUG, "audin_process_data: data_bytes %d", data_bytes);
 
     xstream_new(ls, data_bytes);
-
-    if (ls->data != NULL) {
-        g_memcpy(ls->data, s->p, data_bytes);
-        ls->p += data_bytes;
-        s_mark_end(ls);
-        fifo_add_item(g_in_fifo, (void *) ls);
-        g_bytes_in_fifo += data_bytes;
-    } else {
-        LOG(LOG_LEVEL_ERROR, "audin_process_data: failed to allocate memory for stream");
-        xstream_free(ls);
-    }
+    g_memcpy(ls->data, s->p, data_bytes);
+    ls->p += data_bytes;
+    s_mark_end(ls);
+    fifo_add_item(g_in_fifo, (void *) ls);
+    g_bytes_in_fifo += data_bytes;
 
     return 0;
 }

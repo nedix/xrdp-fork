@@ -26,42 +26,13 @@
 #include "log.h"
 #include "trans.h"
 #include "string_calls.h"
-#include "scancode.h"
 
-/******************************************************************************/
 static int
-lib_send_copy(struct mod *mod, struct stream *s)
-{
-    return trans_write_copy_s(mod->trans, s);
-}
-
-/******************************************************************************/
-/* return error */
-static int
-send_server_monitor_resize(struct mod *mod, struct stream *s,
+send_server_monitor_update(struct mod *v, struct stream *s,
                            int width, int height,
-                           int num_monitors)
-{
-    /* send monitor update message */
-    init_stream(s, 8192);
-    s_push_layer(s, iso_hdr, 4);
-    out_uint16_le(s, 103);
-    out_uint32_le(s, 302);
-    out_uint32_le(s, width);
-    out_uint32_le(s, height);
-    out_uint32_le(s, num_monitors);
-    out_uint32_le(s, 0);
-    s_mark_end(s);
-    int len = (int)(s->end - s->data);
-    s_pop_layer(s, iso_hdr);
-    out_uint32_le(s, len);
-    int rv = lib_send_copy(mod, s);
-    LOG_DEVEL(LOG_LEVEL_DEBUG, "send_server_monitor_update:"
-              " sent monitor updsate message with following properties to"
-              " xorgxrdp backend width=%d, height=%d, num=%d, return value=%d",
-              width, height, num_monitors, rv);
-    return rv;
-}
+                           int num_monitors,
+                           const struct monitor_info *monitors);
+
 static int
 send_server_monitor_full_invalidate(
     struct mod *mod, struct stream *s, int width, int height);
@@ -73,8 +44,15 @@ static int
 lib_mod_process_message(struct mod *mod, struct stream *s);
 
 /******************************************************************************/
-/* return error */
 static int
+lib_send_copy(struct mod *mod, struct stream *s)
+{
+    return trans_write_copy_s(mod->trans, s);
+}
+
+/******************************************************************************/
+/* return error */
+int
 lib_mod_start(struct mod *mod, int w, int h, int bpp)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE, "in lib_mod_start");
@@ -169,7 +147,7 @@ lib_data_in(struct trans *trans)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_connect(struct mod *mod)
 {
     int error;
@@ -191,26 +169,6 @@ lib_mod_connect(struct mod *mod)
                         " bpp rdp connections", 0);
         return 1;
     }
-
-    // This is a good place to finalise any parameters that need to
-    // be set.
-    //
-    // Load the XKB layout
-    if (mod->keycode_set[0] != '\0')
-    {
-        if (scancode_set_keycode_set(mod->keycode_set) == 0)
-        {
-            LOG(LOG_LEVEL_INFO, "Loaded '%s' keycode set", mod->keycode_set);
-        }
-        else
-        {
-            LOG(LOG_LEVEL_WARNING, "Unable to load '%s' keycode set",
-                mod->keycode_set);
-        }
-    }
-    mod->server_init_xkb_layout(mod, &(mod->client_info));
-    LOG(LOG_LEVEL_INFO, "XKB rules '%s' will be used by the module",
-        mod->client_info.xkb_rules);
 
     make_stream(s);
     g_sprintf(con_port, "%s", mod->port);
@@ -270,13 +228,6 @@ lib_mod_connect(struct mod *mod)
 
     if (error == 0)
     {
-        /* send screen size message */
-        error = send_server_monitor_resize(
-                    mod, s, mod->width, mod->height, mod->bpp);
-    }
-
-    if (error == 0)
-    {
         error = send_server_monitor_full_invalidate(
                     mod, s, mod->width, mod->height);
     }
@@ -306,7 +257,7 @@ lib_mod_connect(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
               tbus param3, tbus param4)
 {
@@ -314,7 +265,6 @@ lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
     int len;
     int key;
     int rv;
-    int scancode;
 
     LOG_DEVEL(LOG_LEVEL_TRACE, "in lib_mod_event");
     make_stream(s);
@@ -356,12 +306,6 @@ lib_mod_event(struct mod *mod, int msg, tbus param1, tbus param2,
                 mod->shift_state = msg == 15;
             }
         }
-
-        /* xup doesn't need the Unicode character mapping in param1. Send
-         * the X11 scancode instead, so xorgxrdp doesn't have to do this
-         * work again */
-        scancode = SCANCODE_FROM_KBD_EVENT(param3, param4);
-        param1 = scancode_to_x11_keycode(scancode);
     }
 
     init_stream(s, 8192);
@@ -1286,7 +1230,7 @@ process_server_paint_rect_shmem_ex(struct mod *amod, struct stream *s)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 process_server_egfx_shmfd(struct mod *amod, struct stream *s)
 {
     char *data;
@@ -1333,24 +1277,6 @@ process_server_egfx_shmfd(struct mod *amod, struct stream *s)
             g_file_close(fd);
         }
     }
-    return rv;
-}
-
-/******************************************************************************/
-/* return error */
-static int
-lib_send_server_monitor_resize(
-    struct mod *mod,
-    int width,
-    int height,
-    int num_monitors,
-    const struct monitor_info *monitors
-) {
-    /* send screen size message */
-    struct stream *s;
-    make_stream(s);
-    int rv = send_server_monitor_resize(mod, s, width, height, mod->bpp);
-    free_stream(s);
     return rv;
 }
 
@@ -1532,6 +1458,36 @@ send_server_version_message(struct mod *mod, struct stream *s)
     return rv;
 }
 
+/******************************************************************************/
+/* return error */
+static int
+send_server_monitor_update(struct mod *mod, struct stream *s,
+                           int width, int height,
+                           int num_monitors,
+                           const struct monitor_info *monitors)
+{
+    /* send monitor update message */
+    init_stream(s, 8192);
+    s_push_layer(s, iso_hdr, 4);
+    out_uint16_le(s, 103);
+    out_uint32_le(s, 302);
+    out_uint32_le(s, width);
+    out_uint32_le(s, height);
+    out_uint32_le(s, num_monitors);
+    out_uint32_le(s, 0);
+    out_uint8a(s, monitors, sizeof(monitors[0]) * num_monitors);
+    s_mark_end(s);
+    int len = (int)(s->end - s->data);
+    s_pop_layer(s, iso_hdr);
+    out_uint32_le(s, len);
+    int rv = lib_send_copy(mod, s);
+    LOG_DEVEL(LOG_LEVEL_DEBUG, "send_server_monitor_update:"
+              " sent monitor updsate message with following properties to"
+              " xorgxrdp backend width=%d, height=%d, num=%d, return value=%d",
+              width, height, num_monitors, rv);
+    return rv;
+}
+
 static int
 send_server_monitor_full_invalidate(
     struct mod *mod, struct stream *s, int width, int height)
@@ -1571,6 +1527,23 @@ lib_send_server_version_message(struct mod *mod)
     struct stream *s;
     make_stream(s);
     int rv = send_server_version_message(mod, s);
+    free_stream(s);
+    return rv;
+}
+
+/******************************************************************************/
+/* return error */
+static int
+lib_send_server_monitor_resize(struct mod *mod, int width, int height,
+                               int num_monitors,
+                               const struct monitor_info *monitors,
+                               int *in_progress)
+{
+    struct stream *s;
+    make_stream(s);
+    int rv = send_server_monitor_update(mod, s, width, height,
+                                        num_monitors, monitors);
+    *in_progress = (rv == 0);
     free_stream(s);
     return rv;
 }
@@ -1745,9 +1718,6 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
 
     int width;
     int height;
-    int magic;
-    int con_id;
-    int mon_id;
 
     LOG_DEVEL(LOG_LEVEL_TRACE, "lib_mod_process_message:");
     in_uint16_le(s, type);
@@ -1822,30 +1792,13 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
             in_uint16_le(s, len);
             switch (type)
             {
-                case 1: // xorgxrdp_helper_x11_delete_all_pixmaps
-                    // No-op for now.
-                    break;
-                case 2: // xorgxrdp_helper_x11_create_pixmap
-                    in_uint16_le(s, width);
-                    in_uint16_le(s, height);
-                    in_uint32_le(s, magic);
-                    in_uint32_le(s, con_id);
-                    in_uint32_le(s, mon_id);
-
-                    LOG(LOG_LEVEL_INFO, "Received"
-                        " xorgxrdp_helper_x11_create_pixmap command."
-                        " width: %d, height: %d, magic: %d, con_id %d,"
-                        " mon_id %d",
-                        width, height, magic, con_id, mon_id);
-                    rv = mod->server_reset(mod, width, height, 0);
-                    break;
                 case 3: // memory allocation complete
                     in_uint16_le(s, width);
                     in_uint16_le(s, height);
                     LOG(LOG_LEVEL_INFO, "Received memory_allocation_complete"
                         " command. width: %d, height: %d",
                         width, height);
-                    rv = mod->server_reset(mod, width, height, 0);
+                    rv = mod->server_monitor_resize_done(mod);
                     break;
             }
             s->p = phold + len;
@@ -1861,7 +1814,7 @@ lib_mod_process_message(struct mod *mod, struct stream *s)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_signal(struct mod *mod)
 {
     // no-op
@@ -1870,7 +1823,7 @@ lib_mod_signal(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_end(struct mod *mod)
 {
     if (mod->screen_shmem_pixels != 0)
@@ -1883,7 +1836,7 @@ lib_mod_end(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 {
     if (g_strcasecmp(name, "username") == 0)
@@ -1902,10 +1855,6 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
     {
         g_strncpy(mod->port, value, 255);
     }
-    else if (g_strcasecmp(name, "keycode_set") == 0)
-    {
-        g_snprintf(mod->keycode_set, sizeof(mod->keycode_set), "%s", value);
-    }
     else if (g_strcasecmp(name, "client_info") == 0)
     {
         g_memcpy(&(mod->client_info), value, sizeof(mod->client_info));
@@ -1916,7 +1865,7 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_get_wait_objs(struct mod *mod, tbus *read_objs, int *rcount,
                       tbus *write_objs, int *wcount, int *timeout)
 {
@@ -1933,7 +1882,7 @@ lib_mod_get_wait_objs(struct mod *mod, tbus *read_objs, int *rcount,
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_check_wait_objs(struct mod *mod)
 {
     int rv;
@@ -1956,7 +1905,7 @@ lib_mod_check_wait_objs(struct mod *mod)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_frame_ack(struct mod *amod, int flags, int frame_id)
 {
     LOG_DEVEL(LOG_LEVEL_TRACE,
@@ -1967,7 +1916,7 @@ lib_mod_frame_ack(struct mod *amod, int flags, int frame_id)
 
 /******************************************************************************/
 /* return error */
-static int
+int
 lib_mod_suppress_output(struct mod *amod, int suppress,
                         int left, int top, int right, int bottom)
 {

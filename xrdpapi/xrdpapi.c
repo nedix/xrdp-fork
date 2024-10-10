@@ -209,7 +209,6 @@ WTSVirtualChannelOpenEx(unsigned int SessionId, const char *pVirtualName,
     {
         LOG(LOG_LEVEL_ERROR, "WTSVirtualChannelOpenEx: mysend failed");
         free(wts);
-        free(connect_data);
         return NULL;
     }
     LOG_DEVEL(LOG_LEVEL_DEBUG, "WTSVirtualChannelOpenEx: sent ok");
@@ -218,7 +217,6 @@ WTSVirtualChannelOpenEx(unsigned int SessionId, const char *pVirtualName,
     {
         LOG(LOG_LEVEL_ERROR, "WTSVirtualChannelOpenEx: can_recv failed");
         free(wts);
-        free(connect_data);
         return NULL;
     }
 
@@ -227,7 +225,6 @@ WTSVirtualChannelOpenEx(unsigned int SessionId, const char *pVirtualName,
     {
         LOG(LOG_LEVEL_ERROR, "WTSVirtualChannelOpenEx: myrecv failed");
         free(wts);
-        free(connect_data);
         return NULL;
     }
 
@@ -236,7 +233,6 @@ WTSVirtualChannelOpenEx(unsigned int SessionId, const char *pVirtualName,
     {
         LOG(LOG_LEVEL_ERROR, "WTSVirtualChannelOpenEx: connect_data not ok");
         free(wts);
-        free(connect_data);
         return NULL;
     }
 

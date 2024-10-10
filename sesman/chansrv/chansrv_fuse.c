@@ -413,21 +413,21 @@ static unsigned int format_user_info(char *dest, unsigned int len,
                                      const char *format);
 
 /*****************************************************************************/
-static int
+int
 load_fuse_config(void)
 {
     return 0;
 }
 
 /*****************************************************************************/
-static XFUSE_HANDLE *
+XFUSE_HANDLE *
 xfuse_handle_create()
 {
     return g_new0(XFUSE_HANDLE, 1);
 }
 
 /*****************************************************************************/
-static void
+void
 xfuse_handle_delete(XFUSE_HANDLE *self)
 {
     if (self == NULL)
@@ -443,14 +443,14 @@ xfuse_handle_delete(XFUSE_HANDLE *self)
 }
 
 /*****************************************************************************/
-static uint64_t
+uint64_t
 xfuse_handle_to_fuse_handle(XFUSE_HANDLE *self)
 {
     return (uint64_t) (tintptr) self;
 }
 
 /*****************************************************************************/
-static XFUSE_HANDLE *
+XFUSE_HANDLE *
 xfuse_handle_from_fuse_handle(uint64_t handle)
 {
     return (XFUSE_HANDLE *) (tintptr) handle;
@@ -2199,11 +2199,6 @@ static void xfuse_cb_open(fuse_req_t req, fuse_ino_t ino,
             fip->req = req;
             fip->fi = *fi;
             fip->inum = ino;
-
-            if (g_cfg->fuse_direct_io)
-            {
-                fip->fi.direct_io = 1;
-            }
 
             /* we want path minus 'root node of the share' */
             cptr = filename_on_device(full_path);

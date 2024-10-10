@@ -68,7 +68,7 @@ typedef signed int                      overflow_int_t;
 
 #define critical_if_fail(expr)
 
-static int _pixman_log_error(const char *func, const char *format, ...)
+int _pixman_log_error(const char *func, const char *format, ...)
 {
     return 0;
 }

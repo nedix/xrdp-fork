@@ -63,6 +63,9 @@
 #define XRDP_MAX_BITMAP_CACHE_IDX 2000
 #define XRDP_BITMAP_CACHE_ENTRIES 2048
 
+#define XR_MIN_KEY_CODE 8
+#define XR_MAX_KEY_CODE 256
+
 /*
  * Constants come from ITU-T Recommendations
  */
@@ -284,6 +287,9 @@
 #define CB_ITEMCHANGE  300
 
 #define FASTPATH_MAX_PACKET_SIZE    0x3fff
+
+#define XR_RDP_SCAN_LSHIFT 42
+#define XR_RDP_SCAN_ALT    56
 
 // Since we're not guaranteed to have pixman, copy these directives.
 #define XRDP_PIXMAN_TYPE_ARGB   2

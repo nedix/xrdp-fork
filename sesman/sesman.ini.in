@@ -45,10 +45,10 @@ RestrictInboundClipboard=none
 ; Leave this unset unless you need to disable it.
 #XorgNoNewPrivileges=true
 ; Specify the group which is to have read access to the directory where
-; local sockets for the session are created.
-; This MUST be the same as runtime_group in xrdp.ini, or xrdp will not
-; be able to connect to your sessions.
-#SessionSockdirGroup=xrdp
+; local sockets for the session are created. This is normally the GID
+; which the xrdp process runs as.
+; Default is 'root'
+#SessionSockdirGroup=root
 
 
 [Sessions]
@@ -105,9 +105,6 @@ IdleTimeLimit=0
 ;      I        Sessions are separated by IP address
 ;
 ;   The options U and B are always active, and cannot be de-selected.
-;
-;   The "" in the text above are for readability. Do not include them in
-;   the string
 Policy=Default
 
 [Logging]
@@ -147,7 +144,6 @@ param=Xorg
 ; Leave the rest parameters as-is unless you understand what will happen.
 param=-config
 param=xrdp/xorg.conf
-;param=xrdp/xorg_nvidia.conf
 param=-noreset
 param=-nolisten
 param=tcp
@@ -174,10 +170,6 @@ FuseMountName=thinclient_drives
 FileUmask=077
 ; Can be used to disable FUSE functionality - see sesman.ini(5)
 #EnableFuseMount=false
-; Can be used to enable direct I/O to FUSE open file calls. This is useful
-; when open file handles need to immediately see changes made on the client
-; side. There is a performance hit, so use with caution.
-#FuseDirectIO=true
 ; Uncomment this line only if you are using GNOME 3 versions 3.29.92
 ; and up, and you wish to cut-paste files between Nautilus and Windows. Do
 ; not use this setting for GNOME 4, or other file managers
@@ -214,7 +206,3 @@ EnableSyslog=true
 
 [SessionVariables]
 PULSE_SCRIPT=@sesmansysconfdir@/pulse/default.pa
-;XRDP_USE_ACCEL_ASSIST=1
-XRDP_USE_HELPER=1
-XRDP_NVENC_RATE_CONTROL_MODE=NV_ENC_PARAMS_RC_CONSTQP
-XRDP_NVENC_QP=22

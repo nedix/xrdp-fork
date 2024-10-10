@@ -69,7 +69,6 @@ enum vnc_resize_support_status
 };
 
 struct source_info;
-struct xrdp_client_info;
 
 /* Defined in vnc_clip.c */
 struct vnc_clipboard_data;
@@ -99,7 +98,8 @@ struct vnc
     int (*mod_server_monitor_resize)(struct vnc *v,
                                      int width, int height,
                                      int num_monitors,
-                                     const struct monitor_info *monitors);
+                                     const struct monitor_info *monitors,
+                                     int *in_progress);
     int (*mod_server_monitor_full_invalidate)(struct vnc *v,
             int width, int height);
     int (*mod_server_version_message)(struct vnc *v);
@@ -151,9 +151,7 @@ struct vnc
                                   int total_data_len, int flags);
     int (*server_bell_trigger)(struct vnc *v);
     int (*server_chansrv_in_use)(struct vnc *v);
-    void (*server_init_xkb_layout)(struct vnc *v,
-                                   struct xrdp_client_info *client_info);
-    tintptr server_dumby[100 - 29]; /* align, 100 minus the number of server
+    tintptr server_dumby[100 - 28]; /* align, 100 minus the number of server
                                      functions above */
     /* common */
     tintptr handle; /* pointer to self as long */
@@ -172,7 +170,6 @@ struct vnc
     char port[256];
     int sck_closed;
     int shift_state; /* 0 up, 1 down */
-    int ignore_next_numlock; /* Used in pause key processing */
     int keylayout;
     int clip_chanid;
     struct vnc_clipboard_data *vc;

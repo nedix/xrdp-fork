@@ -53,7 +53,6 @@
 #include "log.h"
 #include "chansrv.h"
 #include "chansrv_fuse.h"
-#include "chansrv_xfs.h"
 #include "devredir.h"
 #include "smartcard.h"
 #include "ms-rdpefs.h"
@@ -192,11 +191,10 @@ devredir_deinit(void)
 
 /*****************************************************************************/
 
-#ifdef USE_DEVEL_LOGGING
 /*
  * Convert a COMPLETION_TYPE to a string
  */
-static const char *completion_type_to_str(enum COMPLETION_TYPE cid)
+const char *completion_type_to_str(enum COMPLETION_TYPE cid)
 {
     return
         (cid == CID_CREATE_DIR_REQ)     ?  "CID_CREATE_DIR_REQ" :
@@ -215,7 +213,6 @@ static const char *completion_type_to_str(enum COMPLETION_TYPE cid)
         (cid == CID_SETATTR)            ?  "CID_SETATTR" :
         /* default */                      "<unknown>";
 };
-#endif
 
 /*****************************************************************************/
 
@@ -316,24 +313,9 @@ devredir_data_in(struct stream *s, int chan_id, int chan_flags, int length,
         if (chan_flags & 1)
         {
             xstream_new(g_input_stream, total_length);
-            if (g_input_stream == NULL)
-            {
-                LOG(LOG_LEVEL_ERROR, "devredir_data_in: failed to allocate memory for input stream");
-                rv = -1;
-                goto done;
-            }
         }
 
-        if (g_input_stream != NULL)
-        {
-            xstream_copyin(g_input_stream, s->p, length);
-        }
-        else
-        {
-            LOG(LOG_LEVEL_ERROR, "devredir_data_in: input stream is NULL");
-            rv = -1;
-            goto done;
-        }
+        xstream_copyin(g_input_stream, s->p, length);
 
         /* in last packet, chan_flags & 0x02 will be true */
         if ((chan_flags & 2) == 0)
@@ -1267,13 +1249,7 @@ devredir_proc_query_dir_response(IRP *irp,
                 return -1;
             }
 
-            // Size the filename buffer so it's big enough for
-            // storing the file in our filesystem if we need to.
-#ifdef XFS_MAXFILENAMELEN
-            char  filename[XFS_MAXFILENAMELEN + 1];
-#else
             char  filename[256];
-#endif
             tui64 LastAccessTime;
             tui64 LastWriteTime;
             tui64 EndOfFile;

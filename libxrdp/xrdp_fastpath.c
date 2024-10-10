@@ -50,6 +50,14 @@ xrdp_fastpath_delete(struct xrdp_fastpath *self)
 }
 
 /*****************************************************************************/
+/* returns error */
+int
+xrdp_fastpath_reset(struct xrdp_fastpath *self)
+{
+    return 0;
+}
+
+/*****************************************************************************/
 int
 xrdp_fastpath_recv(struct xrdp_fastpath *self, struct stream *s)
 {
@@ -152,38 +160,6 @@ xrdp_fastpath_send(struct xrdp_fastpath *self, struct stream *s)
 }
 
 /*****************************************************************************/
-/**
- * Converts the fastpath keyboard event flags to slowpath event flags
- * @param Faspath flags
- * @return slowpath flags
- *
- * See [MMS-RDPBCGR] 2.2.8.1.1.3.1.1.1 and 2.2.8.1.2.2.1
- */
-static int
-get_slowpath_keyboard_event_flags(int fp_flags)
-{
-    int flags = 0;
-
-    if (fp_flags & FASTPATH_INPUT_KBDFLAGS_RELEASE)
-    {
-        // Assume the key was down prior to this event - the fastpath
-        // message doesn't have a separate flag which maps to
-        // KBDFLAGS_DOWN
-        flags |= KBDFLAGS_DOWN | KBDFLAGS_RELEASE;
-    }
-    if (fp_flags & FASTPATH_INPUT_KBDFLAGS_EXTENDED)
-    {
-        flags |= KBDFLAGS_EXTENDED;
-    }
-    if (fp_flags & FASTPATH_INPUT_KBDFLAGS_EXTENDED1)
-    {
-        flags |= KBDFLAGS_EXTENDED1;
-    }
-
-    return flags;
-}
-
-/*****************************************************************************/
 /* FASTPATH_INPUT_EVENT_SCANCODE */
 static int
 xrdp_fastpath_process_EVENT_SCANCODE(struct xrdp_fastpath *self,
@@ -191,6 +167,7 @@ xrdp_fastpath_process_EVENT_SCANCODE(struct xrdp_fastpath *self,
 {
     int flags;
     int code;
+    flags = 0;
 
     if (!s_check_rem_and_log(s, 1, "Parsing [MS-RDPBCGR] TS_FP_KEYBOARD_EVENT"))
     {
@@ -201,7 +178,19 @@ xrdp_fastpath_process_EVENT_SCANCODE(struct xrdp_fastpath *self,
               "eventHeader.eventFlags 0x%2.2x, eventHeader.eventCode (ignored), "
               "keyCode %d", eventFlags, code);
 
-    flags = get_slowpath_keyboard_event_flags(eventFlags);
+    if ((eventFlags & FASTPATH_INPUT_KBDFLAGS_RELEASE))
+    {
+        flags |= KBD_FLAG_UP;
+    }
+    else
+    {
+        flags |= KBD_FLAG_DOWN;
+    }
+
+    if ((eventFlags & FASTPATH_INPUT_KBDFLAGS_EXTENDED))
+    {
+        flags |= KBD_FLAG_EXT;
+    }
 
     xrdp_fastpath_session_callback(self, RDP_INPUT_SCANCODE,
                                    code, 0, flags, 0);
@@ -310,6 +299,7 @@ xrdp_fastpath_process_EVENT_UNICODE(struct xrdp_fastpath *self,
     int flags;
     int code;
 
+    flags = 0;
     if (!s_check_rem_and_log(s, 2, "Parsing [MS-RDPBCGR] TS_FP_UNICODE_KEYBOARD_EVENT"))
     {
         return 1;
@@ -320,8 +310,18 @@ xrdp_fastpath_process_EVENT_UNICODE(struct xrdp_fastpath *self,
               "unicodeCode %d",
               eventFlags, code);
 
-    flags = get_slowpath_keyboard_event_flags(eventFlags);
-
+    if (eventFlags & FASTPATH_INPUT_KBDFLAGS_RELEASE)
+    {
+        flags |= KBD_FLAG_UP;
+    }
+    else
+    {
+        flags |= KBD_FLAG_DOWN;
+    }
+    if (eventFlags & FASTPATH_INPUT_KBDFLAGS_EXTENDED)
+    {
+        flags |= KBD_FLAG_EXT;
+    }
     xrdp_fastpath_session_callback(self, RDP_INPUT_UNICODE,
                                    code, 0, flags, 0);
     return 0;
