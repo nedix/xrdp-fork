@@ -315,7 +315,8 @@ transitions between confinement domains.
 .TP
 \fBSessionSockdirGroup\fR=\fIgroup\fR
 Sets the group owner of the directories containing session sockets. This
-is normally the GID of the xrdp process so xrdp can connect to user sessions.
+MUST be the same as runtime_group in xrdp.ini, or xrdp will not
+be able to connect to any sessions.
 
 .SH "X11 SERVER"
 Following parameters can be used in the \fB[Xvnc]\fR and
@@ -352,6 +353,12 @@ the user).
 2) The desktop may not automatically display a link for the redirected
 drive. To fix this, consult the docs for your chosen desktop.
 .RE
+
+.TP
+\fBFuseDirectIO\fR=\fI[false|true]\fR
+Defaults to \fIfalse\fR. Set to \fItrue\fR to disable page caching in
+FUSE when opening files on a redirected drive. Direct I/O can impact
+the performance of file operations.
 
 .TP
 \fBFileUmask\fR=\fImode\fR

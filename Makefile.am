@@ -70,7 +70,9 @@ SUBDIRS = \
   $(XRDPVRDIR) \
   $(ULALACADIR) \
   tests \
-  tools
+  tools \
+  xrdp_accel_assist \
+  xorgxrdp_helper
 
 distclean-local:
 	-rm -f xrdp_configure_options.h

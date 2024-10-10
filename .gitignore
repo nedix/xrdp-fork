@@ -36,6 +36,7 @@ NEWS
 README
 sesman/chansrv/xrdp-chansrv
 sesman/sesexec/xrdp-sesexec
+sesman/sessvc/xrdp-sessvc
 sesman/tools/xrdp-authtest
 sesman/tools/xrdp-dis
 sesman/tools/xrdp-sesadmin
@@ -54,10 +55,15 @@ tests/libxrdp/test_libxrdp
 tests/memtest/memtest
 tests/xrdp/test_xrdp
 tools/devel/tcp_proxy/tcp_proxy
+tools/chkpriv/xrdp-chkpriv
+tools/chkpriv/xrdp-droppriv
 *.trs
 waitforx/waitforx
+waitforx/xrdp-waitforx
 xrdp/xrdp
 xrdp/xrdp.ini
 xrdp_configure_options.h
 xrdpapi/xrdp-xrdpapi-simple
 .vscode/*
+xrdp_accel_assist/xrdp-accel-assist
+xorgxrdp_helper/xorgxrdp_helper
