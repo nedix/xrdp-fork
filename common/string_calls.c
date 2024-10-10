@@ -102,7 +102,7 @@ g_format_info_string(char *dest, unsigned int len,
 
         /* Do we have room in the output buffer for any more data? We
          * must always write a terminator if possible */
-        if (len > 1)
+        if (len > 1 && copy_from != NULL)
         {
             if (copy_len > (len - 1))
             {
