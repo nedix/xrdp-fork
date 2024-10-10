@@ -1617,6 +1617,39 @@ g_sck_can_send(int sck, int millis)
     return rv;
 }
 
+/******************************************************************************/
+int
+g_alloc_shm_map_fd(void **addr, int *fd, size_t size)
+{
+    int lfd = -1;
+    void *laddr;
+    char name[128];
+    static unsigned int autoinc;
+
+    snprintf(name, 128, "/%8.8X%8.8X", getpid(), autoinc++);
+    lfd = shm_open(name, O_RDWR | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (lfd == -1)
+    {
+        return 1;
+    }
+    shm_unlink(name);
+    if (ftruncate(lfd, size) == -1)
+    {
+        close(lfd);
+        return 2;
+    }
+    /* map fd to address space */
+    laddr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, lfd, 0);
+    if (laddr == MAP_FAILED)
+    {
+        close(lfd);
+        return 3;
+    }
+    *addr = laddr;
+    *fd = lfd;
+    return 0;
+}
+
 /*****************************************************************************/
 /* wait 'millis' milliseconds for the socket to be able to receive */
 /* returns boolean */
