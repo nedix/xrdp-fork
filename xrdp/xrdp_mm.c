@@ -1531,10 +1531,6 @@ egfx_initialize(struct xrdp_mm *self)
 }
 
 /******************************************************************************/
-static const int MAXIMUM_MONITOR_SIZE
-    = sizeof(struct monitor_info) * CLIENT_MONITOR_DATA_MAXIMUM_MONITORS;
-
-/******************************************************************************/
 static void
 sync_dynamic_monitor_data(struct xrdp_wm *wm,
                           struct display_size_description *description)
@@ -1542,15 +1538,22 @@ sync_dynamic_monitor_data(struct xrdp_wm *wm,
     struct display_size_description *display_sizes
         = &(wm->client_info->display_sizes);
 
+    if (description->monitorCount > CLIENT_MONITOR_DATA_MAXIMUM_MONITORS)
+    {
+        LOG(LOG_LEVEL_ERROR,
+            "sync_dynamic_monitor_data: Invalid monitor count %d, capping to %d",
+            description->monitorCount, CLIENT_MONITOR_DATA_MAXIMUM_MONITORS);
+
+        description->monitorCount = CLIENT_MONITOR_DATA_MAXIMUM_MONITORS;
+    }
+
     display_sizes->monitorCount = description->monitorCount;
     display_sizes->session_width = description->session_width;
     display_sizes->session_height = description->session_height;
-    g_memcpy(display_sizes->minfo,
-             description->minfo,
-             MAXIMUM_MONITOR_SIZE);
-    g_memcpy(display_sizes->minfo_wm,
-             description->minfo_wm,
-             MAXIMUM_MONITOR_SIZE);
+    
+    size_t copy_size = description->monitorCount * sizeof(struct monitor_info);
+    g_memcpy(display_sizes->minfo, description->minfo, copy_size);
+    g_memcpy(display_sizes->minfo_wm, description->minfo_wm, copy_size);
 }
 
 /******************************************************************************/
@@ -2048,7 +2051,7 @@ dynamic_monitor_initialize(struct xrdp_mm *self)
 int
 xrdp_mm_drdynvc_up(struct xrdp_mm *self)
 {
-    struct display_control_monitor_layout_data *ignore_marker;
+    // struct display_control_monitor_layout_data *ignore_marker;
     const char *enable_dynamic_resize;
     int error = 0;
 
@@ -2077,10 +2080,10 @@ xrdp_mm_drdynvc_up(struct xrdp_mm *self)
             " Client likely does not support it.");
         return error;
     }
-    ignore_marker = (struct display_control_monitor_layout_data *)
-                    g_malloc(sizeof(struct display_control_monitor_layout_data),
-                             1);
-    list_add_item(self->resize_queue, (tintptr)ignore_marker);
+    // ignore_marker = (struct display_control_monitor_layout_data *)
+    //                 g_malloc(sizeof(struct display_control_monitor_layout_data),
+    //                          1);
+    // list_add_item(self->resize_queue, (tintptr)ignore_marker);
     return error;
 }
 
